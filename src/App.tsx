@@ -1,0 +1,1217 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Task, ChatMessage, ScheduleData, InsightItem, Subtask } from './types';
+import {
+  Bot,
+  Sparkles,
+  Calendar,
+  ClipboardList,
+  Trash2,
+  CheckCircle2,
+  Circle,
+  Send,
+  RefreshCw,
+  AlertCircle,
+  Briefcase,
+  GraduationCap,
+  Home,
+  Activity,
+  DollarSign,
+  Brain,
+  Plus,
+  Compass,
+  Check,
+  RotateCcw,
+  Clock,
+  Flame,
+  FileText
+} from 'lucide-react';
+
+export default function App() {
+  // ============ STATE ============
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDesc, setTaskDesc] = useState('');
+  const [taskDeadline, setTaskDeadline] = useState('');
+  const [taskCategory, setTaskCategory] = useState('work');
+  const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [taskDuration, setTaskDuration] = useState(30);
+
+  // AI & Chat States
+  const [activeTab, setActiveTab] = useState<'chat' | 'schedule' | 'insights'>('chat');
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [scheduleData, setScheduleData] = useState<ScheduleData | null>(null);
+  const [insights, setInsights] = useState<InsightItem[]>([]);
+  const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking'>('idle');
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // ============ INITIALIZATION ============
+  useEffect(() => {
+    // Load tasks from localStorage
+    const savedTasks = localStorage.getItem('tp_tasks');
+    if (savedTasks) {
+      try {
+        setTasks(JSON.parse(savedTasks));
+      } catch (e) {
+        console.error('Error parsing saved tasks:', e);
+      }
+    } else {
+      // Load premium default sample tasks if it is first visit
+      const now = new Date();
+      const d1 = new Date(now); d1.setHours(d1.getHours() + 6);
+      const d2 = new Date(now); d2.setDate(d2.getDate() + 1);
+      const d3 = new Date(now); d3.setDate(d3.getDate() + 3);
+
+      const defaultTasks: Task[] = [
+        {
+          id: '1',
+          title: 'Deploy Cloud Run Application',
+          description: 'Deploy the main application image to Cloud Run containers and configure secrets in AI Studio UI.',
+          deadline: d1.toISOString(),
+          category: 'work',
+          priority: 'high',
+          completed: false,
+          estimatedDuration: 60,
+          subtasks: [
+            { id: 'sub-1-1', title: 'Review container configuration', completed: true, duration: 15 },
+            { id: 'sub-1-2', title: 'Configure environment variables', completed: false, duration: 15 },
+            { id: 'sub-1-3', title: 'Run deploy script', completed: false, duration: 30 }
+          ],
+          createdAt: now.toISOString()
+        },
+        {
+          id: '2',
+          title: 'Complete Project Documentation',
+          description: 'Draft the technical overview, design concepts, and integration guides.',
+          deadline: d2.toISOString(),
+          category: 'study',
+          priority: 'medium',
+          completed: false,
+          estimatedDuration: 45,
+          subtasks: [],
+          createdAt: now.toISOString()
+        },
+        {
+          id: '3',
+          title: 'Organize Home Workspace',
+          description: 'Cable management, clean up desk, organize references.',
+          deadline: d3.toISOString(),
+          category: 'personal',
+          priority: 'low',
+          completed: false,
+          estimatedDuration: 90,
+          subtasks: [],
+          createdAt: now.toISOString()
+        }
+      ];
+      setTasks(defaultTasks);
+      localStorage.setItem('tp_tasks', JSON.stringify(defaultTasks));
+    }
+
+    // Set default deadline to tomorrow 23:59
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(23, 59, 0, 0);
+    setTaskDeadline(tomorrow.toISOString().slice(0, 16));
+
+    // Welcome messages
+    setChatMessages([
+      {
+        id: 'welcome',
+        sender: 'ai',
+        text: `### Welcome to **TaskPulse AI**! ⚡
+
+I'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use the server-side Gemini API to help you plan your workload.
+
+**What I can do for you:**
+*   **Deconstruct complex tasks**: Click **"Break down"** on any task card to generate interactive subtasks.
+*   **Build optimized schedules**: Click **"Plan Day"** or the button below to generate an hour-by-hour planner.
+*   **Analyze workload bottlenecks**: Get real-time productivity insights by clicking **"Full Analysis"**.
+
+What would you like to accomplish first?`,
+        timestamp: new Date().toLocaleTimeString()
+      }
+    ]);
+  }, []);
+
+  // Save tasks on changes
+  useEffect(() => {
+    if (tasks.length > 0) {
+      localStorage.setItem('tp_tasks', JSON.stringify(tasks));
+    }
+  }, [tasks]);
+
+  // Scroll to bottom of chat
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages, isLoading]);
+
+  // ============ TASK HANDLING ============
+  const handleAddTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskTitle.trim()) return;
+
+    const newTask: Task = {
+      id: Date.now().toString(),
+      title: taskTitle.trim(),
+      description: taskDesc.trim(),
+      deadline: new Date(taskDeadline).toISOString(),
+      category: taskCategory,
+      priority: taskPriority,
+      completed: false,
+      estimatedDuration: taskDuration,
+      subtasks: [],
+      createdAt: new Date().toISOString()
+    };
+
+    const updated = [newTask, ...tasks];
+    setTasks(updated);
+    localStorage.setItem('tp_tasks', JSON.stringify(updated));
+
+    setTaskTitle('');
+    setTaskDesc('');
+    
+    // Auto-select and trigger dynamic AI assessment
+    setSelectedTaskId(newTask.id);
+    analyzeTaskDirectly(newTask, updated);
+  };
+
+  const handleDeleteTask = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = tasks.filter(t => t.id !== id);
+    setTasks(updated);
+    localStorage.setItem('tp_tasks', JSON.stringify(updated));
+    if (selectedTaskId === id) {
+      setSelectedTaskId(null);
+    }
+  };
+
+  const handleToggleTask = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = tasks.map(t => {
+      if (t.id === id) {
+        return { ...t, completed: !t.completed };
+      }
+      return t;
+    });
+    setTasks(updated);
+    localStorage.setItem('tp_tasks', JSON.stringify(updated));
+  };
+
+  const handleToggleSubtask = (taskId: string, subtaskId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = tasks.map(t => {
+      if (t.id === taskId) {
+        const updatedSub = t.subtasks.map(s => {
+          if (s.id === subtaskId) {
+            return { ...s, completed: !s.completed };
+          }
+          return s;
+        });
+        return { ...t, subtasks: updatedSub };
+      }
+      return t;
+    });
+    setTasks(updated);
+    localStorage.setItem('tp_tasks', JSON.stringify(updated));
+  };
+
+  // ============ DYNAMIC URGENCY CALCULATION ============
+  const getUrgencyDetails = (deadlineStr: string) => {
+    const now = new Date();
+    const due = new Date(deadlineStr);
+    const diffMs = due.getTime() - now.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffHours < 0) {
+      return {
+        level: 'urgent' as const,
+        label: 'OVERDUE',
+        pct: 100,
+        color: '#FF5F5F',
+        emoji: '🚨'
+      };
+    }
+    if (diffHours < 24) {
+      return {
+        level: 'urgent' as const,
+        label: `${Math.round(diffHours)}h left`,
+        pct: 95,
+        color: '#FF5F5F',
+        emoji: '🔴'
+      };
+    }
+    if (diffHours < 72) {
+      const days = Math.round(diffHours / 24);
+      return {
+        level: 'soon' as const,
+        label: `${days}d left`,
+        pct: 65,
+        color: '#FFD166',
+        emoji: '🟡'
+      };
+    }
+    const days = Math.round(diffHours / 24);
+    const pct = Math.max(15, 50 - days * 2);
+    return {
+      level: 'ok' as const,
+      label: `${days}d left`,
+      pct: pct,
+      color: '#4FFFB0',
+      emoji: '🟢'
+    };
+  };
+
+  const renderUrgencyCircle = (pct: number, color: string, label: string, completed: boolean) => {
+    const r = 18;
+    const circ = 2 * Math.PI * r;
+    const offset = circ - (pct / 100) * circ;
+
+    return (
+      <div className="relative w-11 h-11 flex-shrink-0">
+        <svg className="w-full h-full -rotate-90">
+          <circle className="fill-none stroke-[#1E3355] stroke-[3]" cx="22" cy="22" r={r} />
+          <circle
+            className="fill-none stroke-[3] stroke-linecap-round transition-all duration-1000"
+            cx="22"
+            cy="22"
+            r={r}
+            stroke={completed ? '#6B8CAE' : color}
+            strokeDasharray={circ}
+            strokeDashoffset={completed ? 0 : offset}
+          />
+        </svg>
+        <span
+          className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-center leading-none"
+          style={{ color: completed ? '#6B8CAE' : color }}
+        >
+          {completed ? <Check className="w-4 h-4" /> : label}
+        </span>
+      </div>
+    );
+  };
+
+  const getCategoryTheme = (category: string) => {
+    switch (category) {
+      case 'work': return { icon: <Briefcase className="w-3.5 h-3.5" />, emoji: '💼', label: 'Work', bg: 'rgba(123,97,255,0.15)', text: '#7B61FF' };
+      case 'study': return { icon: <GraduationCap className="w-3.5 h-3.5" />, emoji: '📚', label: 'Study', bg: 'rgba(255,209,102,0.15)', text: '#FFD166' };
+      case 'personal': return { icon: <Home className="w-3.5 h-3.5" />, emoji: '🏠', label: 'Personal', bg: 'rgba(79,255,176,0.15)', text: '#4FFFB0' };
+      case 'health': return { icon: <Activity className="w-3.5 h-3.5" />, emoji: '💪', label: 'Health', bg: 'rgba(255,95,95,0.15)', text: '#FF5F5F' };
+      case 'finance': return { icon: <DollarSign className="w-3.5 h-3.5" />, emoji: '💰', label: 'Finance', bg: 'rgba(236,72,153,0.15)', text: '#EC4899' };
+      default: return { icon: <ClipboardList className="w-3.5 h-3.5" />, emoji: '📌', label: 'General', bg: 'rgba(107,140,174,0.15)', text: '#6B8CAE' };
+    }
+  };
+
+  // ============ INTERACTIVE AI ASSISTANT TRIGGERS ============
+
+  // Analyze a task as soon as it's selected or added
+  const analyzeTaskDirectly = async (task: Task, currentTasks = tasks) => {
+    setIsLoading(true);
+    setAgentStatus('thinking');
+    setActiveTab('chat');
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Please give me a fast strategic analysis of my newly selected task "${task.title}". Explain how I should approach it and why it fits within my general load.`,
+          tasks: currentTasks,
+          history: chatMessages.slice(-4)
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed API call');
+      const data = await response.json();
+
+      setChatMessages(prev => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          sender: 'ai',
+          text: data.text,
+          timestamp: new Date().toLocaleTimeString()
+        }
+      ]);
+    } catch (e: any) {
+      console.error('Error analyzing task:', e);
+    } finally {
+      setIsLoading(false);
+      setAgentStatus('idle');
+    }
+  };
+
+  // Breakdown a task into interactive subtasks
+  const handleBreakdownTask = async (task: Task, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsLoading(true);
+    setAgentStatus('thinking');
+    setActiveTab('chat');
+
+    // Add user request visually
+    const userMessageId = Date.now().toString();
+    setChatMessages(prev => [
+      ...prev,
+      {
+        id: userMessageId,
+        sender: 'user',
+        text: `Break down my task "${task.title}" into highly actionable subtasks.`,
+        timestamp: new Date().toLocaleTimeString()
+      }
+    ]);
+
+    try {
+      const response = await fetch('/api/breakdown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskTitle: task.title,
+          taskDescription: task.description,
+          deadline: task.deadline
+        })
+      });
+
+      if (!response.ok) throw new Error('API failure');
+      const data = await response.json();
+
+      if (data.subtasks && data.subtasks.length > 0) {
+        // Map response array to our Subtask schema
+        const mappedSubtasks: Subtask[] = data.subtasks.map((s: any, idx: number) => ({
+          id: `sub-${task.id}-${idx}-${Date.now()}`,
+          title: s.title,
+          completed: false,
+          duration: s.duration || 30
+        }));
+
+        // Update the tasks state with these new interactive subtasks
+        setTasks(prev => prev.map(t => {
+          if (t.id === task.id) {
+            return { ...t, subtasks: [...t.subtasks, ...mappedSubtasks] };
+          }
+          return t;
+        }));
+
+        const totalMinutes = mappedSubtasks.reduce((sum, s) => sum + (s.duration || 0), 0);
+
+        setChatMessages(prev => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            sender: 'ai',
+            text: `### Subtask Breakdown Created! 🎯
+
+I've successfully analyzed your task **"${task.title}"** and generated **${mappedSubtasks.length} subtasks** (approx. ${totalMinutes} minutes of total effort). 
+
+I have automatically injected these directly into your task card in the sidebar! You can now check them off interactively.
+
+**Generated Steps:**
+${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`,
+            timestamp: new Date().toLocaleTimeString()
+          }
+        ]);
+      } else {
+        throw new Error('No subtasks returned');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setChatMessages(prev => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          sender: 'ai',
+          text: `I had some trouble automatically parsing the structured steps for this task. However, I highly recommend breaking down **"${task.title}"** into 3 key stages: preparation, execution, and review. Let me know if you would like me to try again!`,
+          timestamp: new Date().toLocaleTimeString()
+        }
+      ]);
+    } finally {
+      setIsLoading(false);
+      setAgentStatus('idle');
+    }
+  };
+
+  // Generate Daily Schedule
+  const handlePlanDay = async () => {
+    setIsLoading(true);
+    setAgentStatus('thinking');
+    setActiveTab('schedule');
+
+    try {
+      const response = await fetch('/api/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks: tasks.filter(t => !t.completed) })
+      });
+
+      if (!response.ok) throw new Error('API schedule error');
+      const data = await response.json();
+      setScheduleData(data);
+    } catch (e: any) {
+      console.error(e);
+      // Fallback
+      setScheduleData({
+        days: [
+          {
+            label: `Today - ${new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'short', day: 'numeric' })}`,
+            slots: [
+              { time: "09:00 AM", task: "Review High Priority Tasks", desc: "Select your highest deadline-risk task and start right away.", duration: "60 min" },
+              { time: "11:00 AM", task: "Admin & Minor Tasks", desc: "Process responses, clear notifications, organize folders.", duration: "30 min" },
+              { time: "12:00 PM", task: "Midday Power Break", desc: "Stay hydrated, stretch, and rest your eyes.", duration: "45 min" }
+            ]
+          }
+        ],
+        advice: "Start with your highest priority task directly after lunch to build immediate momentum."
+      });
+    } finally {
+      setIsLoading(false);
+      setAgentStatus('idle');
+    }
+  };
+
+  // Generate strategic insights
+  const handleFullAnalysis = async () => {
+    setIsLoading(true);
+    setAgentStatus('thinking');
+    setActiveTab('insights');
+
+    try {
+      const response = await fetch('/api/insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks: tasks })
+      });
+
+      if (!response.ok) throw new Error('API insights error');
+      const data = await response.json();
+      setInsights(data.insights || []);
+    } catch (e: any) {
+      console.error(e);
+      setInsights([
+        { icon: "💡", title: "Tackle bottlenecks first", text: "Identify the task with the tightest deadline and block out 45 minutes of absolute focus." },
+        { icon: "⚡", title: "Single-Tasking Power", text: "Turn off notifications when tackling high priority items to avoid cognitive switching overhead." }
+      ]);
+    } finally {
+      setIsLoading(false);
+      setAgentStatus('idle');
+    }
+  };
+
+  // Send conversational chat message
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!chatInput.trim() || isLoading) return;
+
+    const userMsg = chatInput.trim();
+    setChatInput('');
+
+    // Render User Message
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      sender: 'user',
+      text: userMsg,
+      timestamp: new Date().toLocaleTimeString()
+    };
+    setChatMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+    setAgentStatus('thinking');
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMsg,
+          tasks: tasks,
+          history: chatMessages.slice(-10) // Send recent context history
+        })
+      });
+
+      if (!response.ok) {
+        let errMsg = `Server returned status ${response.status}`;
+        try {
+          const rawText = await response.text();
+          try {
+            const errData = JSON.parse(rawText);
+            if (errData && errData.error) {
+              errMsg = errData.error;
+            }
+          } catch (_) {
+            if (rawText && rawText.trim().length > 0 && rawText.length < 500) {
+              errMsg = rawText.trim();
+            }
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+      const data = await response.json();
+
+      setChatMessages(prev => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          sender: 'ai',
+          text: data.text,
+          timestamp: new Date().toLocaleTimeString()
+        }
+      ]);
+    } catch (err: any) {
+      console.error(err);
+      setChatMessages(prev => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          sender: 'ai',
+          text: `I'm currently having a small technical difficulty reaching my core models.
+
+**System Error Details:** \`${err.message || err}\`
+
+**Recommended Actions:**
+1. **Double-check your API Key**: Make sure a valid Gemini API Key is configured in the **Secrets** panel of AI Studio.
+2. **Verify Tasks**: Ensure you have defined active tasks in your sidebar.
+3. **Try refreshing**: Sometimes a quick page reload clears connection hiccups.`,
+          timestamp: new Date().toLocaleTimeString()
+        }
+      ]);
+    } finally {
+      setIsLoading(false);
+      setAgentStatus('idle');
+    }
+  };
+
+  // Quick prompt buttons
+  const triggerQuickAction = (text: string) => {
+    setChatInput(text);
+    setTimeout(() => {
+      const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+      // Triggers send with current input
+    });
+  };
+
+  // Helper to format AI replies nicely (converts simple markdown heading or bullet styles)
+  const formatText = (text: string) => {
+    return text.split('\n').map((line, idx) => {
+      let content = line;
+      // Match headings
+      if (content.startsWith('### ')) {
+        return <h3 key={idx} className="text-base font-bold text-[#4FFFB0] mt-3 mb-1 font-syne">{content.replace('### ', '')}</h3>;
+      }
+      if (content.startsWith('## ')) {
+        return <h2 key={idx} className="text-lg font-extrabold text-[#7B61FF] mt-4 mb-2 font-syne">{content.replace('## ', '')}</h2>;
+      }
+      if (content.startsWith('# ')) {
+        return <h1 key={idx} className="text-xl font-black text-[#7B61FF] mt-5 mb-3 font-syne">{content.replace('# ', '')}</h1>;
+      }
+      // Bold text formatting
+      const boldRegex = /\*\*(.*?)\*\*/g;
+      const parts = [];
+      let lastIdx = 0;
+      let match;
+      while ((match = boldRegex.exec(content)) !== null) {
+        if (match.index > lastIdx) {
+          parts.push(content.substring(lastIdx, match.index));
+        }
+        parts.push(<strong key={match.index} className="text-[#4FFFB0] font-semibold">{match[1]}</strong>);
+        lastIdx = boldRegex.lastIndex;
+      }
+      if (lastIdx < content.length) {
+        parts.push(content.substring(lastIdx));
+      }
+
+      const finalLine = parts.length > 0 ? parts : content;
+
+      // Match bullets
+      if (line.trim().startsWith('* ') || line.trim().startsWith('- ')) {
+        const bulletText = line.trim().replace(/^[-*]\s+/, '');
+        return (
+          <li key={idx} className="list-disc ml-5 my-1 text-[#E8F4FD] opacity-95 text-sm">
+            {bulletText.includes('**') ? finalLine : bulletText}
+          </li>
+        );
+      }
+
+      // Standard paragraph
+      return <p key={idx} className="my-1.5 text-sm leading-relaxed text-[#E8F4FD]/90">{finalLine}</p>;
+    });
+  };
+
+  // Stats Counters
+  const pendingCount = tasks.filter(t => !t.completed).length;
+  const overdueCount = tasks.filter(t => {
+    if (t.completed) return false;
+    const due = new Date(t.deadline);
+    return due.getTime() < Date.now();
+  }).length;
+  const completedCount = tasks.filter(t => t.completed).length;
+
+  return (
+    <div id="taskpulse-app" className="flex flex-col min-h-screen bg-[#050B1A] text-[#E8F4FD] font-sans selection:bg-[#4FFFB0]/30">
+      
+      {/* HEADER */}
+      <header id="header" className="bg-[#0D1B2E] border-b border-[#1E3355] px-6 h-16 flex items-center justify-between sticky top-0 z-50">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-[#4FFFB0] relative flex items-center justify-center shadow-[0_0_15px_rgba(79,255,176,0.3)] animate-pulse">
+            <span className="text-xs">⚡</span>
+          </div>
+          <span className="font-extrabold text-xl tracking-tight font-syne">
+            Task<span className="text-[#4FFFB0]">Pulse</span>
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-[#112236] border border-[#1E3355] px-3.5 py-1.5 rounded-full text-xs">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-ping" />
+            <span className="text-[#4FFFB0] font-medium font-syne">Server Agent Ready</span>
+          </div>
+        </div>
+      </header>
+
+      {/* BODY LAYOUT */}
+      <div id="layout-body" className="grid grid-cols-1 md:grid-cols-[380px_1fr] flex-1 min-h-[calc(100vh-64px)]">
+        
+        {/* LEFT PANEL: Task Sidebar */}
+        <aside id="sidebar" className="bg-[#0D1B2E] border-r border-[#1E3355] flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)]">
+          
+          {/* Header & Task Creation Form */}
+          <div className="p-5 border-b border-[#1E3355] flex-shrink-0 bg-[#0D1B2E]/95">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-[#6B8CAE] mb-4 flex items-center gap-2 font-syne">
+              <ClipboardList className="w-4 h-4 text-[#7B61FF]" /> My Tasks
+            </h2>
+            
+            <form onSubmit={handleAddTask} className="flex flex-col gap-3">
+              <input
+                type="text"
+                placeholder="What needs to get done?"
+                value={taskTitle}
+                onChange={e => setTaskTitle(e.target.value)}
+                maxLength={100}
+                className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] px-4 py-2.5 rounded-lg text-sm outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] transition-colors"
+              />
+              
+              <textarea
+                placeholder="Brief description (optional)..."
+                value={taskDesc}
+                onChange={e => setTaskDesc(e.target.value)}
+                maxLength={300}
+                className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] px-4 py-2 rounded-lg text-xs outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] transition-colors resize-none h-14"
+              />
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">Deadline</label>
+                  <input
+                    type="datetime-local"
+                    value={taskDeadline}
+                    onChange={e => setTaskDeadline(e.target.value)}
+                    className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] transition-colors"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">Category</label>
+                  <select
+                    value={taskCategory}
+                    onChange={e => setTaskCategory(e.target.value)}
+                    className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] transition-colors"
+                  >
+                    <option value="work">💼 Work</option>
+                    <option value="study">📚 Study</option>
+                    <option value="personal">🏠 Personal</option>
+                    <option value="health">💪 Health</option>
+                    <option value="finance">💰 Finance</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">Priority</label>
+                  <select
+                    value={taskPriority}
+                    onChange={e => setTaskPriority(e.target.value as any)}
+                    className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] transition-colors"
+                  >
+                    <option value="low">🟢 Low</option>
+                    <option value="medium">🟡 Medium</option>
+                    <option value="high">🔴 High</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">Est. Duration</label>
+                  <select
+                    value={taskDuration}
+                    onChange={e => setTaskDuration(Number(e.target.value))}
+                    className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] transition-colors"
+                  >
+                    <option value={15}>15 min</option>
+                    <option value={30}>30 min</option>
+                    <option value={45}>45 min</option>
+                    <option value={60}>60 min</option>
+                    <option value={90}>90 min</option>
+                    <option value={120}>120 min</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-1">
+                <button
+                  type="submit"
+                  className="flex-1 bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] font-semibold text-xs py-2 px-4 rounded-lg transition-all duration-150 shadow-md shadow-[#4FFFB0]/10 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Task
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePlanDay}
+                  className="bg-[#112236] hover:bg-[#1E3355] border border-[#1E3355] text-[#4FFFB0] hover:text-[#3DEBA0] text-xs py-2 px-3 rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5 font-medium"
+                  title="Generate a smart daily planner schedule with AI"
+                >
+                  <Calendar className="w-3.5 h-3.5" /> Plan Day
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Scrollable Task List */}
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar">
+            {tasks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                <span className="text-3xl mb-3">🎯</span>
+                <p className="text-sm font-semibold text-[#E8F4FD] font-syne">No tasks planned yet</p>
+                <p className="text-xs text-[#6B8CAE] mt-1">Add tasks above to organize your time and let AI optimize your agenda.</p>
+              </div>
+            ) : (
+              tasks
+                .sort((a, b) => {
+                  if (a.completed !== b.completed) return a.completed ? 1 : -1;
+                  return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+                })
+                .map(task => {
+                  const urg = getUrgencyDetails(task.deadline);
+                  const isSelected = selectedTaskId === task.id;
+                  const catTheme = getCategoryTheme(task.category);
+                  const formatTime = new Date(task.deadline).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
+
+                  return (
+                    <div
+                      key={task.id}
+                      onClick={() => selectTaskDirectly(task.id)}
+                      className={`relative bg-[#0A1628] border rounded-xl p-4 cursor-pointer transition-all duration-200 group flex flex-col gap-3 hover:translate-x-0.5 ${
+                        task.completed ? 'border-[#1E3355]/40 opacity-60' : isSelected ? 'border-[#4FFFB0] bg-[#0A1628]/90' : 'border-[#1E3355] hover:border-[#4FFFB0]/60'
+                      }`}
+                    >
+                      {/* Accent strip */}
+                      <div
+                        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
+                        style={{ backgroundColor: task.completed ? '#6B8CAE' : urg.color }}
+                      />
+
+                      {/* Header row */}
+                      <div className="flex items-start justify-between gap-2 pl-1.5">
+                        <div className="flex flex-col gap-1 flex-1">
+                          <h3 className={`text-sm font-bold tracking-tight leading-snug group-hover:text-[#4FFFB0] transition-colors ${task.completed ? 'line-through text-[#6B8CAE]' : 'text-[#E8F4FD]'}`}>
+                            {task.title}
+                          </h3>
+                          {task.description && (
+                            <p className="text-[11px] text-[#6B8CAE] line-clamp-2 leading-relaxed">
+                              {task.description}
+                            </p>
+                          )}
+                        </div>
+                        {renderUrgencyCircle(urg.pct, urg.color, urg.label, task.completed)}
+                      </div>
+
+                      {/* Interactive Subtasks list (Rich feature block) */}
+                      {task.subtasks && task.subtasks.length > 0 && (
+                        <div className="pl-1.5 border-l border-[#1E3355]/50 ml-2 py-1 flex flex-col gap-2 bg-[#112236]/30 p-2 rounded-lg">
+                          <div className="text-[10px] font-bold text-[#6B8CAE] uppercase tracking-wider mb-1 flex items-center justify-between">
+                            <span>Steps ({task.subtasks.filter(s => s.completed).length}/{task.subtasks.length})</span>
+                            <span className="text-xs text-[#4FFFB0] font-mono">{Math.round((task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100)}%</span>
+                          </div>
+                          {task.subtasks.map(s => (
+                            <div
+                              key={s.id}
+                              onClick={(e) => handleToggleSubtask(task.id, s.id, e)}
+                              className="flex items-center gap-2 text-[11px] text-[#E8F4FD] hover:text-[#4FFFB0] transition-colors py-0.5 cursor-pointer"
+                            >
+                              {s.completed ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-[#4FFFB0] flex-shrink-0" />
+                              ) : (
+                                <Circle className="w-3.5 h-3.5 text-[#6B8CAE] group-hover:text-[#4FFFB0] flex-shrink-0" />
+                              )}
+                              <span className={s.completed ? 'line-through text-[#6B8CAE]' : ''}>
+                                {s.title} <span className="text-[#6B8CAE] font-mono text-[9px]">({s.duration}m)</span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Metadata row */}
+                      <div className="flex items-center justify-between gap-1 pl-1.5 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 font-syne"
+                            style={{ backgroundColor: catTheme.bg, color: catTheme.text }}
+                          >
+                            {catTheme.icon}
+                            {catTheme.label}
+                          </span>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                            task.priority === 'high' ? 'bg-[#FF5F5F]/15 text-[#FF5F5F]' : task.priority === 'medium' ? 'bg-[#FFD166]/15 text-[#FFD166]' : 'bg-[#4FFFB0]/15 text-[#4FFFB0]'
+                          }`}>
+                            {task.priority.toUpperCase()}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-[#6B8CAE] font-mono flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {formatTime}
+                        </span>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center justify-between pt-2 border-t border-[#1E3355]/40 pl-1.5 mt-1">
+                        <button
+                          onClick={(e) => handleToggleTask(task.id, e)}
+                          className="text-xs text-[#6B8CAE] hover:text-[#4FFFB0] transition-colors flex items-center gap-1 bg-[#112236] hover:bg-[#1E3355] px-2.5 py-1 rounded-md border border-[#1E3355]"
+                        >
+                          {task.completed ? <RotateCcw className="w-3 h-3" /> : <Check className="w-3 h-3 text-[#4FFFB0]" />}
+                          {task.completed ? 'Undo' : 'Complete'}
+                        </button>
+
+                        <div className="flex items-center gap-2">
+                          {!task.completed && task.subtasks.length === 0 && (
+                            <button
+                              onClick={(e) => handleBreakdownTask(task, e)}
+                              className="text-[11px] text-[#4FFFB0] hover:text-[#3DEBA0] transition-colors flex items-center gap-1 bg-[#112236]/80 hover:bg-[#1E3355] px-2 py-1 rounded-md border border-[#1E3355]"
+                              title="Leverage Gemini API to break this task down into bite-sized actionable checklists"
+                            >
+                              <Bot className="w-3 h-3" /> Break down
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => handleDeleteTask(task.id, e)}
+                            className="text-xs text-[#6B8CAE] hover:text-[#FF5F5F] transition-colors p-1 hover:bg-[#FF5F5F]/10 rounded-md"
+                            title="Delete task"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+            )}
+          </div>
+
+          {/* Footer Stats summary info */}
+          <div id="stats-summary" className="p-4 border-t border-[#1E3355] bg-[#0A1628] flex-shrink-0 grid grid-cols-3 gap-2 text-center">
+            <div className="flex flex-col">
+              <span className="text-base font-extrabold text-[#FF5F5F] font-syne">{overdueCount}</span>
+              <span className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">🚨 Overdue</span>
+            </div>
+            <div className="flex flex-col border-x border-[#1E3355]">
+              <span className="text-base font-extrabold text-[#4FFFB0] font-syne">{pendingCount}</span>
+              <span className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">⏳ Pending</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-base font-extrabold text-[#6B8CAE] font-syne">{completedCount}</span>
+              <span className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">✅ Done</span>
+            </div>
+          </div>
+        </aside>
+
+        {/* RIGHT PANEL: Main Tab Area */}
+        <main id="main-content" className="flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)]">
+          
+          {/* Main Panel Header Banner */}
+          <div className="px-6 py-4 border-b border-[#1E3355] bg-[#0D1B2E] flex items-center justify-between flex-shrink-0">
+            <div>
+              <h1 className="text-lg font-bold text-[#E8F4FD] font-syne flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-[#4FFFB0]" /> TaskPulse AI Agent
+              </h1>
+              <p className="text-xs text-[#6B8CAE] mt-0.5">
+                {selectedTaskId
+                  ? `Active Focus: "${tasks.find(t => t.id === selectedTaskId)?.title}"`
+                  : 'Select any task in the sidebar to run personalized AI assessments'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleFullAnalysis}
+                className="bg-gradient-to-r from-[#7B61FF] to-[#5B41FF] hover:from-[#6B51EF] hover:to-[#4B31EF] text-white text-xs font-bold py-1.5 px-3 rounded-lg shadow-lg shadow-[#7B61FF]/10 transition-all flex items-center gap-1"
+                title="Get full workload analysis"
+              >
+                <Flame className="w-3.5 h-3.5 text-[#4FFFB0]" /> Workload Analysis
+              </button>
+            </div>
+          </div>
+
+          {/* Top Progress Loading Shimmer */}
+          <div className={`h-0.5 w-full bg-[#1E3355] relative overflow-hidden flex-shrink-0 ${agentStatus === 'thinking' ? 'block' : 'hidden'}`}>
+            <div className="absolute top-0 bottom-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-[#4FFFB0] to-transparent animate-shimmer" />
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="px-6 border-b border-[#1E3355] bg-[#0D1B2E] flex gap-2 flex-shrink-0">
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`py-3 px-4 text-xs font-semibold tracking-wide border-b-2 transition-all cursor-pointer font-syne ${
+                activeTab === 'chat' ? 'text-[#4FFFB0] border-[#4FFFB0]' : 'text-[#6B8CAE] border-transparent hover:text-[#E8F4FD]'
+              }`}
+            >
+              💬 AI Assistant Chat
+            </button>
+            <button
+              onClick={() => { setActiveTab('schedule'); if (!scheduleData) handlePlanDay(); }}
+              className={`py-3 px-4 text-xs font-semibold tracking-wide border-b-2 transition-all cursor-pointer font-syne ${
+                activeTab === 'schedule' ? 'text-[#4FFFB0] border-[#4FFFB0]' : 'text-[#6B8CAE] border-transparent hover:text-[#E8F4FD]'
+              }`}
+            >
+              📅 Schedule Planner
+            </button>
+            <button
+              onClick={() => { setActiveTab('insights'); if (insights.length === 0) handleFullAnalysis(); }}
+              className={`py-3 px-4 text-xs font-semibold tracking-wide border-b-2 transition-all cursor-pointer font-syne ${
+                activeTab === 'insights' ? 'text-[#4FFFB0] border-[#4FFFB0]' : 'text-[#6B8CAE] border-transparent hover:text-[#E8F4FD]'
+              }`}
+            >
+              💡 Workload Insights
+            </button>
+          </div>
+
+          {/* VIEWPORT AREA */}
+          <div className="flex-1 overflow-hidden relative flex flex-col bg-[#050B1A]">
+            
+            {/* 1. CHAT VIEW */}
+            <div className={`flex-1 flex flex-col overflow-hidden ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
+              <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4 custom-scrollbar">
+                {chatMessages.map(msg => (
+                  <div
+                    key={msg.id}
+                    className={`flex gap-3 max-w-[85%] ${msg.sender === 'user' ? 'self-end flex-row-reverse' : 'self-start'}`}
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 font-bold border ${
+                      msg.sender === 'user'
+                        ? 'bg-[#112236] border-[#1E3355] text-[#E8F4FD]'
+                        : 'bg-gradient-to-tr from-[#7B61FF] to-[#4FFFB0] border-transparent text-[#050B1A]'
+                    }`}>
+                      {msg.sender === 'user' ? '👤' : '⚡'}
+                    </div>
+                    
+                    <div className={`rounded-xl p-4 text-sm shadow-md border leading-relaxed ${
+                      msg.sender === 'user'
+                        ? 'bg-[#112236] border-[#4FFFB0]/30 text-[#E8F4FD]'
+                        : 'bg-[#0D1B2E] border-[#1E3355] text-[#E8F4FD]'
+                    }`}>
+                      {msg.sender === 'ai' ? formatText(msg.text) : <p className="text-sm">{msg.text}</p>}
+                    </div>
+                  </div>
+                ))}
+                
+                {isLoading && (
+                  <div className="flex gap-3 self-start max-w-[80%]">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs bg-gradient-to-tr from-[#7B61FF] to-[#4FFFB0] text-[#050B1A] font-bold">
+                      ⚡
+                    </div>
+                    <div className="bg-[#0D1B2E] border border-[#1E3355] rounded-xl p-4 flex items-center gap-1.5 shadow-md">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-bounce" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-bounce [animation-delay:0.2s]" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-bounce [animation-delay:0.4s]" />
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Chat Form Footer */}
+              <div className="p-5 border-t border-[#1E3355] bg-[#0D1B2E]/95 flex flex-col gap-3">
+                {/* Prompt suggestion buttons */}
+                <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar scrollbar-none flex-wrap">
+                  <button
+                    onClick={() => { setChatInput('Prioritize all my tasks by deadline and risk'); }}
+                    className="bg-[#112236] hover:bg-[#1E3355] border border-[#1E3355] hover:border-[#4FFFB0]/40 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
+                  >
+                    🎯 Prioritize workload
+                  </button>
+                  <button
+                    onClick={() => { setChatInput('What should I work on right now?'); }}
+                    className="bg-[#112236] hover:bg-[#1E3355] border border-[#1E3355] hover:border-[#4FFFB0]/40 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
+                  >
+                    ⚡ What now?
+                  </button>
+                  <button
+                    onClick={() => { setChatInput('I feel overwhelmed. Help me focus and build a calm action plan.'); }}
+                    className="bg-[#112236] hover:bg-[#1E3355] border border-[#1E3355] hover:border-[#4FFFB0]/40 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
+                  >
+                    😰 Help, I\'m overwhelmed
+                  </button>
+                  <button
+                    onClick={() => { setChatInput('Draft an hour-by-hour planner with rest stops for today.'); }}
+                    className="bg-[#112236] hover:bg-[#1E3355] border border-[#1E3355] hover:border-[#4FFFB0]/40 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
+                  >
+                    📅 Build schedule
+                  </button>
+                </div>
+
+                <form onSubmit={handleSendMessage} className="flex gap-3 items-center">
+                  <textarea
+                    rows={1}
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+                    placeholder="Ask your AI agent to organize, breakdown, or plan your tasks..."
+                    className="flex-1 bg-[#112236] border border-[#1E3355] text-[#E8F4FD] px-4 py-3 rounded-lg text-sm outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] transition-colors resize-none max-h-24"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!chatInput.trim() || isLoading}
+                    className="w-11 h-11 rounded-lg bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] flex items-center justify-center font-bold transition-all shadow-md shadow-[#4FFFB0]/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
+                  >
+                    <Send className="w-5 h-5" />
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            {/* 2. SCHEDULE PLANNER VIEW */}
+            <div className={`flex-1 overflow-y-auto p-6 ${activeTab === 'schedule' ? 'block' : 'hidden'} custom-scrollbar`}>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-base font-bold text-[#E8F4FD] font-syne flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-[#7B61FF]" /> Chronological Daily Schedule
+                  </h2>
+                  <p className="text-xs text-[#6B8CAE] mt-0.5">Custom hour-by-hour pipeline generated dynamically by AI based on your tasks</p>
+                </div>
+                <button
+                  onClick={handlePlanDay}
+                  className="bg-[#112236] hover:bg-[#1E3355] text-[#4FFFB0] hover:text-[#3DEBA0] border border-[#1E3355] text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '3s' }} /> Regenerate Schedule
+                </button>
+              </div>
+
+              {scheduleData ? (
+                <div className="flex flex-col gap-6">
+                  {scheduleData.advice && (
+                    <div className="bg-[#112236] border border-[#1E3355] p-4 rounded-xl flex gap-3 items-start leading-relaxed text-sm">
+                      <Brain className="w-5 h-5 text-[#4FFFB0] flex-shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-[#4FFFB0] block mb-0.5 font-syne text-xs uppercase tracking-wider">AI Strategist Advice</strong>
+                        <p className="text-xs text-[#E8F4FD]/90">{scheduleData.advice}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {scheduleData.days?.map((day, dIdx) => (
+                    <div key={dIdx} className="bg-[#0D1B2E] border border-[#1E3355] rounded-xl overflow-hidden shadow-md">
+                      <div className="bg-[#112236] border-b border-[#1E3355] px-4 py-3 font-syne font-bold text-xs uppercase tracking-wider text-[#4FFFB0]">
+                        {day.label}
+                      </div>
+                      
+                      <div className="divide-y divide-[#1E3355]/40">
+                        {day.slots?.map((slot, sIdx) => {
+                          const isBreak = slot.task.toLowerCase().includes('break') || slot.task.toLowerCase().includes('lunch') || slot.task.toLowerCase().includes('recharge');
+                          return (
+                            <div key={sIdx} className="p-4 flex items-start gap-4 transition-colors hover:bg-[#112236]/20">
+                              <div className="w-20 flex-shrink-0">
+                                <span className="text-xs font-semibold text-[#4FFFB0] font-mono">{slot.time}</span>
+                                <span className="block text-[10px] text-[#6B8CAE] mt-0.5 font-mono">{slot.duration}</span>
+                              </div>
+                              <div className={`w-1 self-stretch rounded-full ${isBreak ? 'bg-[#6B8CAE]/40' : 'bg-[#7B61FF]'}`} />
+                              <div className="flex-1">
+                                <h4 className={`text-sm font-bold ${isBreak ? 'text-[#6B8CAE]' : 'text-[#E8F4FD]'}`}>{slot.task}</h4>
+                                <p className="text-xs text-[#6B8CAE] mt-0.5 leading-relaxed">{slot.desc}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+                  <span className="text-4xl mb-4">📅</span>
+                  <p className="text-sm font-semibold text-[#E8F4FD] font-syne">No Schedule Prepared Yet</p>
+                  <p className="text-xs text-[#6B8CAE] mt-1 max-w-sm">
+                    Click "Plan Day" to parse your custom task stack and construct an optimized, high-performance hourly schedule.
+                  </p>
+                  <button
+                    onClick={handlePlanDay}
+                    className="mt-4 bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] text-xs font-bold py-2 px-5 rounded-lg transition-all cursor-pointer"
+                  >
+                    Build My Plan
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 3. INSIGHTS VIEW */}
+            <div className={`flex-1 overflow-y-auto p-6 ${activeTab === 'insights' ? 'block' : 'hidden'} custom-scrollbar`}>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-base font-bold text-[#E8F4FD] font-syne flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-[#FF5F5F]" /> Deep Workload Insights
+                  </h2>
+                  <p className="text-xs text-[#6B8CAE] mt-0.5">Strategic analytics, cognitive load forecasts, and priority suggestions</p>
+                </div>
+                <button
+                  onClick={handleFullAnalysis}
+                  className="bg-[#112236] hover:bg-[#1E3355] text-[#4FFFB0] hover:text-[#3DEBA0] border border-[#1E3355] text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Re-Analyze Workload
+                </button>
+              </div>
+
+              {insights.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {insights.map((ins, idx) => (
+                    <div key={idx} className="bg-[#0D1B2E] border border-[#1E3355] rounded-xl p-5 shadow-sm transition-all hover:border-[#4FFFB0]/30 flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-2xl">{ins.icon}</span>
+                        <span className="text-[10px] font-bold text-[#6B8CAE] uppercase tracking-wider font-mono">Insight #{idx + 1}</span>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-[#E8F4FD] font-syne mb-1">{ins.title}</h3>
+                        <p className="text-xs text-[#6B8CAE] leading-relaxed">{ins.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+                  <span className="text-4xl mb-4">💡</span>
+                  <p className="text-sm font-semibold text-[#E8F4FD] font-syne">Workload Analysis Unprepared</p>
+                  <p className="text-xs text-[#6B8CAE] mt-1 max-w-sm">
+                    Click below to trigger a full analytical check on your tasks and deadlines. Let the AI diagnose bottlenecks.
+                  </p>
+                  <button
+                    onClick={handleFullAnalysis}
+                    className="mt-4 bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] text-xs font-bold py-2 px-5 rounded-lg transition-all cursor-pointer"
+                  >
+                    Run Full Diagnostics
+                  </button>
+                </div>
+              )}
+            </div>
+
+          </div>
+        </main>
+
+      </div>
+    </div>
+  );
+
+  // Helper to select a task card and view/request direct agent updates
+  function selectTaskDirectly(id: string) {
+    setSelectedTaskId(id);
+    const task = tasks.find(t => t.id === id);
+    if (task) {
+      analyzeTaskDirectly(task);
+    }
+  }
+}
