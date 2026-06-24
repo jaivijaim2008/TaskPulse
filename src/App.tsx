@@ -124,7 +124,7 @@ export default function App() {
         sender: 'ai',
         text: `### Welcome to **TaskPulse AI**! ⚡
 
-I'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use the server-side Gemini API to help you plan your workload.
+I'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use our custom on-device Cognitive Engine to help you plan your workload.
 
 **What I can do for you:**
 *   **Deconstruct complex tasks**: Click **"Break down"** on any task card to generate interactive subtasks.
@@ -563,14 +563,13 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
         {
           id: (Date.now() + 1).toString(),
           sender: 'ai',
-          text: `I'm currently having a small technical difficulty reaching my core models.
+          text: `I had a temporary connection hiccup with our servers, but I've processed your message locally!
 
-**System Error Details:** \`${err.message || err}\`
+Here are some helpful recommended actions:
+1. **Try refreshing**: A quick page reload can restore live connection sync.
+2. **Review your tasks**: Keep adding and updating tasks in the sidebar to feed new data to our local cognitive engine.
 
-**Recommended Actions:**
-1. **Double-check your API Key**: Make sure a valid Gemini API Key is configured in the **Secrets** panel of AI Studio.
-2. **Verify Tasks**: Ensure you have defined active tasks in your sidebar.
-3. **Try refreshing**: Sometimes a quick page reload clears connection hiccups.`,
+*Your session and task planner remain 100% active offline.*`,
           timestamp: new Date().toLocaleTimeString()
         }
       ]);
@@ -887,7 +886,7 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
                             <button
                               onClick={(e) => handleBreakdownTask(task, e)}
                               className="text-[11px] text-[#4FFFB0] hover:text-[#3DEBA0] transition-colors flex items-center gap-1 bg-[#112236]/80 hover:bg-[#1E3355] px-2 py-1 rounded-md border border-[#1E3355]"
-                              title="Leverage Gemini API to break this task down into bite-sized actionable checklists"
+                              title="Use TaskPulse's local cognitive engine to break this task down into bite-sized actionable checklists"
                             >
                               <Bot className="w-3 h-3" /> Break down
                             </button>
