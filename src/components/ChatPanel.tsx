@@ -10,11 +10,11 @@ interface ChatPanelProps {
   isListening: boolean;
   speechSupported: boolean;
   toggleListening: () => void;
-  handleSendMessage: (e?: React.FormEvent) => void;
+  handleSendMessage: (e?: React.FormEvent | string, text?: string) => void;
   handleClearChat: () => void;
 }
 
-export const ChatPanel: React.FC<ChatPanelProps> = ({
+export const ChatPanel = React.memo<ChatPanelProps>(({
   chatMessages,
   chatInput,
   setChatInput,
@@ -26,6 +26,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   handleClearChat
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [localInput, setLocalInput] = React.useState(chatInput);
+
+  useEffect(() => {
+    setLocalInput(chatInput);
+  }, [chatInput]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -148,7 +153,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           ].map((action, aIdx) => (
             <button
               key={aIdx}
-              onClick={() => setChatInput(action.text)}
+              onClick={() => {
+                setChatInput(action.text);
+                setLocalInput(action.text);
+              }}
               className="bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-emerald-500/40 text-slate-400 hover:text-emerald-400 text-[10px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-full transition-all whitespace-nowrap cursor-pointer active:scale-95"
             >
               {action.label}
@@ -157,15 +165,29 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         </div>
 
         {/* Input box */}
-        <form onSubmit={handleSendMessage} className="flex gap-2.5 items-center">
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            if (localInput.trim() && !isLoading) {
+              handleSendMessage(undefined, localInput);
+              setLocalInput('');
+              setChatInput('');
+            }
+          }}
+          className="flex gap-2.5 items-center"
+        >
           <textarea
             rows={1}
-            value={chatInput}
-            onChange={e => setChatInput(e.target.value)}
+            value={localInput}
+            onChange={e => setLocalInput(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                handleSendMessage();
+                if (localInput.trim() && !isLoading) {
+                  handleSendMessage(undefined, localInput);
+                  setLocalInput('');
+                  setChatInput('');
+                }
               }
             }}
             placeholder="Ask AI companion to prioritize, suggest checklists, or design plans..."
@@ -196,7 +218,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           </button>
           <button
             type="submit"
-            disabled={!chatInput.trim() || isLoading}
+            disabled={!localInput.trim() || isLoading}
             className="w-11 h-11 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 flex items-center justify-center font-bold transition-all shadow-md hover:shadow-lg hover:shadow-emerald-500/10 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0 active:scale-95"
           >
             <Send className="w-4 h-4 text-slate-950 stroke-[3]" />
@@ -205,4 +227,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       </div>
     </div>
   );
-};
+});
+
+ChatPanel.displayName = 'ChatPanel';

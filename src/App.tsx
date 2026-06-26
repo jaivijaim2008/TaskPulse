@@ -251,7 +251,7 @@ export default function App() {
       });
   }, []);
 
-  const toggleListening = () => {
+  const toggleListening = React.useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Speech recognition is not supported in this browser. Please use Chrome, Safari, or Edge.");
@@ -297,10 +297,10 @@ export default function App() {
         setIsListening(false);
       }
     }
-  };
+  }, [isListening]);
 
   // ============ TASK HANDLING ============
-  const handleExportTasks = () => {
+  const handleExportTasks = React.useCallback(() => {
     try {
       const dataStr = JSON.stringify(tasks, null, 2);
       const blob = new Blob([dataStr], { type: 'application/json' });
@@ -315,9 +315,9 @@ export default function App() {
     } catch (error) {
       console.error('Failed to export tasks:', error);
     }
-  };
+  }, [tasks]);
 
-  const handleAddTask = (e: React.FormEvent) => {
+  const handleAddTask = React.useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!taskTitle.trim()) return;
 
@@ -365,12 +365,12 @@ export default function App() {
     setTaskDesc('');
     setMobileSidebarOpen(false);
     
-    // Auto-select and trigger dynamic AI assessment
+    // Auto-select and focus newly created task instantly
     setSelectedTaskId(newTask.id);
-    analyzeTaskDirectly(newTask, updated);
-  };
+    setFocusedTask(newTask);
+  }, [taskTitle, taskDesc, taskDeadline, taskCategory, taskPriority, taskDuration, tasks]);
 
-  const handleDeleteTask = (id: string, e: React.MouseEvent) => {
+  const handleDeleteTask = React.useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const currentTasks = Array.isArray(tasks) ? tasks : [];
     const updated = currentTasks.filter(t => t.id !== id);
@@ -379,9 +379,9 @@ export default function App() {
     if (selectedTaskId === id) {
       setSelectedTaskId(null);
     }
-  };
+  }, [tasks, selectedTaskId]);
 
-  const handleToggleTask = (id: string, e: React.MouseEvent) => {
+  const handleToggleTask = React.useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const currentTasks = Array.isArray(tasks) ? tasks : [];
     const updated = currentTasks.map(t => {
@@ -397,9 +397,9 @@ export default function App() {
     });
     setTasks(updated);
     localStorage.setItem('tp_tasks', JSON.stringify(updated));
-  };
+  }, [tasks]);
 
-  const handleToggleSubtask = (taskId: string, subtaskId: string, e: React.MouseEvent) => {
+  const handleToggleSubtask = React.useCallback((taskId: string, subtaskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const currentTasks = Array.isArray(tasks) ? tasks : [];
     const updated = currentTasks.map(t => {
@@ -421,17 +421,17 @@ export default function App() {
     });
     setTasks(updated);
     localStorage.setItem('tp_tasks', JSON.stringify(updated));
-  };
+  }, [tasks]);
 
   // ============ QUICK INLINE EDIT HANDLERS ============
-  const handleStartQuickEdit = (e: React.MouseEvent, task: Task) => {
+  const handleStartQuickEdit = React.useCallback((e: React.MouseEvent, task: Task) => {
     e.stopPropagation();
     setInlineEditingTaskId(task.id);
     setQuickEditTitle(task.title);
     setQuickEditPriority(task.priority);
-  };
+  }, []);
 
-  const handleSaveQuickEdit = (e: React.FormEvent, taskId: string) => {
+  const handleSaveQuickEdit = React.useCallback((e: React.FormEvent, taskId: string) => {
     e.stopPropagation();
     e.preventDefault();
     if (!quickEditTitle.trim()) return;
@@ -458,28 +458,28 @@ export default function App() {
 
     playBreakdownSound();
     triggerVibration();
-  };
+  }, [quickEditTitle, quickEditPriority, tasks, focusedTask]);
 
-  const handleCancelQuickEdit = (e: React.MouseEvent) => {
+  const handleCancelQuickEdit = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setInlineEditingTaskId(null);
-  };
+  }, []);
 
   // ============ DRAG AND DROP HANDLERS ============
-  const handleDragStart = (e: React.DragEvent, id: string) => {
+  const handleDragStart = React.useCallback((e: React.DragEvent, id: string) => {
     setDraggingTaskId(id);
     e.dataTransfer.setData('text/plain', id);
     e.dataTransfer.effectAllowed = 'move';
-  };
+  }, []);
 
-  const handleDragOver = (e: React.DragEvent, id: string) => {
+  const handleDragOver = React.useCallback((e: React.DragEvent, id: string) => {
     e.preventDefault();
     if (draggingTaskId && draggingTaskId !== id) {
       setDragOverTaskId(id);
     }
-  };
+  }, [draggingTaskId]);
 
-  const handleDrop = (e: React.DragEvent, targetId: string) => {
+  const handleDrop = React.useCallback((e: React.DragEvent, targetId: string) => {
     e.preventDefault();
     const sourceId = e.dataTransfer.getData('text/plain') || draggingTaskId;
     
@@ -521,12 +521,12 @@ export default function App() {
 
     setDraggingTaskId(null);
     setDragOverTaskId(null);
-  };
+  }, [draggingTaskId, tasks]);
 
-  const handleDragEnd = () => {
+  const handleDragEnd = React.useCallback(() => {
     setDraggingTaskId(null);
     setDragOverTaskId(null);
-  };
+  }, []);
 
   // ============ INTERACTIVE AI ASSISTANT TRIGGERS ============
   const streamChatResponse = async (response: Response, aiMessageId: string) => {
@@ -556,7 +556,7 @@ export default function App() {
     });
   };
 
-  const analyzeTaskDirectly = async (task: Task, currentTasks = tasks) => {
+  const analyzeTaskDirectly = React.useCallback(async (task: Task, currentTasks = tasks) => {
     setIsLoading(true);
     setAgentStatus('thinking');
     setActiveTab('chat');
@@ -599,9 +599,9 @@ export default function App() {
       setIsLoading(false);
       setAgentStatus('idle');
     }
-  };
+  }, [tasks, chatMessages]);
 
-  const handleBreakdownTask = async (task: Task, e: React.MouseEvent) => {
+  const handleBreakdownTask = React.useCallback(async (task: Task, e: React.MouseEvent) => {
     e.stopPropagation();
     setIsLoading(true);
     setAgentStatus('thinking');
@@ -672,7 +672,7 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       setChatMessages(prev => [
-        ...prev,
+         ...prev,
         {
           id: (Date.now() + 1).toString(),
           sender: 'ai',
@@ -684,9 +684,9 @@ export default function App() {
       setIsLoading(false);
       setAgentStatus('idle');
     }
-  };
+  }, []);
 
-  const handlePlanDay = async () => {
+  const handlePlanDay = React.useCallback(async () => {
     setIsLoading(true);
     setAgentStatus('thinking');
     setActiveTab('schedule');
@@ -720,9 +720,9 @@ export default function App() {
       setIsLoading(false);
       setAgentStatus('idle');
     }
-  };
+  }, [tasks]);
 
-  const handleFullAnalysis = async () => {
+  const handleFullAnalysis = React.useCallback(async () => {
     setIsLoading(true);
     setAgentStatus('thinking');
     setActiveTab('insights');
@@ -748,13 +748,25 @@ export default function App() {
       setIsLoading(false);
       setAgentStatus('idle');
     }
-  };
+  }, [tasks]);
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!chatInput.trim() || isLoading) return;
+  const handleSendMessage = React.useCallback(async (e?: React.FormEvent | string, text?: string) => {
+    let textToSend = "";
+    if (typeof e === 'string') {
+      textToSend = e.trim();
+    } else if (text) {
+      textToSend = text.trim();
+    } else if (chatInput) {
+      textToSend = chatInput.trim();
+    }
 
-    const userMsg = chatInput.trim();
+    if (e && typeof e !== 'string' && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
+
+    if (!textToSend || isLoading) return;
+
+    const userMsg = textToSend;
     setChatInput('');
 
     const userMessage: ChatMessage = {
@@ -817,9 +829,9 @@ export default function App() {
       setIsLoading(false);
       setAgentStatus('idle');
     }
-  };
+  }, [chatInput, tasks, chatMessages]);
 
-  const handleClearChat = () => {
+  const handleClearChat = React.useCallback(() => {
     localStorage.removeItem('tp_chat_history');
     setChatMessages([
       {
@@ -829,18 +841,17 @@ export default function App() {
         timestamp: new Date().toLocaleTimeString()
       }
     ]);
-  };
+  }, []);
 
-  function selectTaskDirectly(id: string) {
+  const selectTaskDirectly = React.useCallback((id: string) => {
     setSelectedTaskId(id);
     const currentTasks = Array.isArray(tasks) ? tasks : [];
     const task = currentTasks.find(t => t.id === id);
     if (task) {
       setFocusedTask(task);
       setMobileSidebarOpen(false);
-      analyzeTaskDirectly(task, currentTasks);
     }
-  }
+  }, [tasks]);
 
   // Count summaries
   const currentTasks = Array.isArray(tasks) ? tasks : [];
@@ -1204,6 +1215,7 @@ export default function App() {
           handleBreakdownTask={handleBreakdownTask}
           handleToggleTask={handleToggleTask}
           handleDeleteTask={handleDeleteTask}
+          handleAnalyzeTask={analyzeTaskDirectly}
         />
       )}
 

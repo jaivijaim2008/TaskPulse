@@ -19,6 +19,7 @@ interface TaskModalProps {
   handleBreakdownTask: (task: Task, e: React.MouseEvent) => void;
   handleToggleTask: (id: string, e: React.MouseEvent) => void;
   handleDeleteTask: (id: string, e: React.MouseEvent) => void;
+  handleAnalyzeTask: (task: Task) => void;
 }
 
 export const TaskModal: React.FC<TaskModalProps> = ({
@@ -28,7 +29,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   handleToggleSubtask,
   handleBreakdownTask,
   handleToggleTask,
-  handleDeleteTask
+  handleDeleteTask,
+  handleAnalyzeTask
 }) => {
   const catTheme = getCategoryTheme(focusedTask.category);
   const urg = getUrgencyDetails(focusedTask.deadline);
@@ -227,17 +229,34 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
         {/* Modal Footer Controls */}
         <div className="flex items-center justify-between border-t border-slate-850 pt-4 relative z-10 flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={(e) => {
-              handleToggleTask(focusedTask.id, e);
-              setFocusedTask({ ...focusedTask, completed: !focusedTask.completed });
-            }}
-            className="bg-slate-950 hover:bg-slate-900 border border-slate-800 text-xs font-bold text-slate-200 px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-98"
-          >
-            {focusedTask.completed ? <RotateCcw className="w-4 h-4 text-slate-400" /> : <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />}
-            {focusedTask.completed ? 'Mark Pending' : 'Mark Completed'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                handleToggleTask(focusedTask.id, e);
+                setFocusedTask({ ...focusedTask, completed: !focusedTask.completed });
+              }}
+              className="bg-slate-950 hover:bg-slate-900 border border-slate-800 text-xs font-bold text-slate-200 px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-98"
+            >
+              {focusedTask.completed ? <RotateCcw className="w-4 h-4 text-slate-400" /> : <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />}
+              {focusedTask.completed ? 'Mark Pending' : 'Mark Completed'}
+            </button>
+
+            {!focusedTask.completed && (
+              <button
+                type="button"
+                onClick={() => {
+                  handleAnalyzeTask(focusedTask);
+                  setFocusedTask(null);
+                }}
+                className="bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/25 text-xs font-bold text-emerald-400 px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-98"
+                title="Get smart strategic AI analysis on this task"
+              >
+                <Bot className="w-4 h-4 text-emerald-400" />
+                Analyze with AI
+              </button>
+            )}
+          </div>
 
           <button
             type="button"

@@ -39,7 +39,7 @@ interface TaskCardProps {
   handleDragEnd: () => void;
 }
 
-export const TaskCard: React.FC<TaskCardProps> = ({
+export const TaskCard = React.memo<TaskCardProps>(({
   task,
   isSelected,
   selectTaskDirectly,
@@ -371,4 +371,6 @@ export const TaskCard: React.FC<TaskCardProps> = ({
       )}
     </div>
   );
-};
+});
+
+TaskCard.displayName = 'TaskCard';

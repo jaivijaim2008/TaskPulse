@@ -19,7 +19,7 @@ interface TaskFormProps {
   handleExportTasks: () => void;
 }
 
-export const TaskForm: React.FC<TaskFormProps> = ({
+export const TaskForm = React.memo<TaskFormProps>(({
   taskTitle,
   setTaskTitle,
   taskDesc,
@@ -150,4 +150,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({
       </form>
     </div>
   );
-};
+});
+
+TaskForm.displayName = 'TaskForm';
