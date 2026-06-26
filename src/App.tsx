@@ -1,38 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Task, ChatMessage, ScheduleData, InsightItem, Subtask } from './types';
 import {
-  Bot,
   Sparkles,
-  Calendar,
   ClipboardList,
-  Trash2,
-  CheckCircle2,
-  Circle,
-  Send,
-  RefreshCw,
-  AlertCircle,
-  Briefcase,
-  GraduationCap,
-  Home,
-  Activity,
-  DollarSign,
-  Brain,
-  Plus,
-  Compass,
-  Check,
-  RotateCcw,
-  Clock,
   Flame,
-  FileText,
-  Mic,
-  MicOff,
   Search,
-  X,
+  Bot,
+  Plus,
+  RefreshCw,
+  Calendar,
+  Activity,
   Menu,
-  Download,
-  Pencil,
-  Save
+  Download
 } from 'lucide-react';
+import { getUrgencyDetails, getCategoryTheme } from './utils/helpers';
+import { TaskForm } from './components/TaskForm';
+import { TaskCard } from './components/TaskCard';
+import { ChatPanel } from './components/ChatPanel';
+import { SchedulePanel } from './components/SchedulePanel';
+import { InsightsPanel } from './components/InsightsPanel';
+import { TaskModal } from './components/TaskModal';
+import { UnfinishedModal } from './components/UnfinishedModal';
 
 // ============ INTERACTION FEEDBACK UTILITIES ============
 const playCompletionSound = () => {
@@ -140,7 +128,6 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
   const recognitionRef = useRef<any>(null);
-  const initialCheckRef = useRef(false);
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -149,65 +136,21 @@ export default function App() {
     }
   }, []);
 
-  const toggleListening = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser. Please use Chrome, Safari, or Edge.");
-      return;
-    }
-
-    if (isListening) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      setIsListening(false);
-    } else {
-      try {
-        const rec = new SpeechRecognition();
-        rec.continuous = false;
-        rec.interimResults = false;
-        rec.lang = 'en-US';
-
-        rec.onstart = () => {
-          setIsListening(true);
-        };
-
-        rec.onresult = (event: any) => {
-          const transcript = event.results[0][0].transcript;
-          if (transcript) {
-            setChatInput(prev => prev ? `${prev} ${transcript}` : transcript);
-          }
-        };
-
-        rec.onerror = (event: any) => {
-          console.error("Speech recognition error:", event.error);
-          setIsListening(false);
-        };
-
-        rec.onend = () => {
-          setIsListening(false);
-        };
-
-        recognitionRef.current = rec;
-        rec.start();
-      } catch (err) {
-        console.error("Failed to start SpeechRecognition:", err);
-        setIsListening(false);
-      }
-    }
-  };
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
   // ============ INITIALIZATION ============
   useEffect(() => {
-    // Load tasks from localStorage
+    // Load tasks from localStorage with safe fallback guards
     const savedTasks = localStorage.getItem('tp_tasks');
     if (savedTasks) {
       try {
-        setTasks(JSON.parse(savedTasks));
+        const parsed = JSON.parse(savedTasks);
+        if (Array.isArray(parsed)) {
+          setTasks(parsed);
+        } else {
+          setTasks([]);
+        }
       } catch (e) {
         console.error('Error parsing saved tasks:', e);
+        setTasks([]);
       }
     } else {
       // Load premium default sample tasks if it is first visit
@@ -216,7 +159,7 @@ export default function App() {
       const d2 = new Date(now); d2.setDate(d2.getDate() + 1);
       const d3 = new Date(now); d3.setDate(d3.getDate() + 3);
 
-       const defaultTasks: Task[] = [
+      const defaultTasks: Task[] = [
         {
           id: '1',
           title: 'Deploy Cloud Run Application',
@@ -284,16 +227,7 @@ export default function App() {
         {
           id: 'welcome',
           sender: 'ai',
-          text: `### Welcome to **TaskPulse AI**! ⚡
-
-I'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use our custom on-device Cognitive Engine to help you plan your workload.
-
-**What I can do for you:**
-*   **Deconstruct complex tasks**: Click **"Break down"** on any task card to generate interactive subtasks.
-*   **Build optimized schedules**: Click **"Plan Day"** or the button below to generate an hour-by-hour planner.
-*   **Analyze workload bottlenecks**: Get real-time productivity insights by clicking **"Full Analysis"**.
-
-What would you like to accomplish first?`,
+          text: `### Welcome to **TaskPulse AI**! ⚡\n\nI'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use our custom on-device Cognitive Engine to help you plan your workload.\n\n**What I can do for you:**\n*   **Deconstruct complex tasks**: Click **"Breakdown"** on any task card to generate interactive subtasks.\n*   **Build optimized schedules**: Click **"Plan Day"** or the button below to generate an hour-by-hour planner.\n*   **Analyze workload bottlenecks**: Get real-time productivity insights by clicking **"Full Analysis"**.\n\nWhat would you like to accomplish first?`,
           timestamp: new Date().toLocaleTimeString()
         }
       ]);
@@ -308,47 +242,62 @@ What would you like to accomplish first?`,
         setApiKeyStatus(data);
       })
       .catch(err => {
-        console.error('Failed to retrieve key status:', err);
+        console.error("Error checking API key status:", err);
         setApiKeyStatus({
           configured: false,
           status: 'error',
-          message: 'Could not connect to diagnostic endpoint'
+          message: 'Failed to query API diagnostics from developer server. Offline simulation activated.'
         });
       });
   }, []);
 
-  // Save tasks on changes
-  useEffect(() => {
-    if (tasks.length > 0) {
-      localStorage.setItem('tp_tasks', JSON.stringify(tasks));
+  const toggleListening = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not supported in this browser. Please use Chrome, Safari, or Edge.");
+      return;
     }
-  }, [tasks]);
 
-  // Save chat history on changes
-  useEffect(() => {
-    if (chatMessages.length > 0) {
-      localStorage.setItem('tp_chat_history', JSON.stringify(chatMessages));
-    }
-  }, [chatMessages]);
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+    } else {
+      try {
+        const rec = new SpeechRecognition();
+        rec.continuous = false;
+        rec.interimResults = false;
+        rec.lang = 'en-US';
 
-  // Scroll to bottom of chat
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, isLoading]);
+        rec.onstart = () => {
+          setIsListening(true);
+        };
 
-  // One-shot check on startup to show unfinished task warnings
-  useEffect(() => {
-    if (tasks.length > 0 && !initialCheckRef.current) {
-      initialCheckRef.current = true;
-      const hasUnfinished = tasks.some(t => !t.completed);
-      if (hasUnfinished) {
-        const timer = setTimeout(() => {
-          setShowUnfinishedModal(true);
-        }, 1200);
-        return () => clearTimeout(timer);
+        rec.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          if (transcript) {
+            setChatInput(prev => prev ? `${prev} ${transcript}` : transcript);
+          }
+        };
+
+        rec.onerror = (event: any) => {
+          console.error("Speech recognition error:", event.error);
+          setIsListening(false);
+        };
+
+        rec.onend = () => {
+          setIsListening(false);
+        };
+
+        recognitionRef.current = rec;
+        rec.start();
+      } catch (err) {
+        console.error("Failed to start SpeechRecognition:", err);
+        setIsListening(false);
       }
     }
-  }, [tasks]);
+  };
 
   // ============ TASK HANDLING ============
   const handleExportTasks = () => {
@@ -372,11 +321,29 @@ What would you like to accomplish first?`,
     e.preventDefault();
     if (!taskTitle.trim()) return;
 
+    let deadlineIso: string;
+    try {
+      if (taskDeadline && !isNaN(new Date(taskDeadline).getTime())) {
+        deadlineIso = new Date(taskDeadline).toISOString();
+      } else {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(23, 59, 0, 0);
+        deadlineIso = tomorrow.toISOString();
+      }
+    } catch (err) {
+      console.error("Failed to parse deadline, using fallback:", err);
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(23, 59, 0, 0);
+      deadlineIso = tomorrow.toISOString();
+    }
+
     const newTask: Task = {
       id: Date.now().toString(),
       title: taskTitle.trim(),
       description: taskDesc.trim(),
-      deadline: new Date(taskDeadline).toISOString(),
+      deadline: deadlineIso,
       category: taskCategory,
       priority: taskPriority,
       completed: false,
@@ -386,9 +353,10 @@ What would you like to accomplish first?`,
       position: 0
     };
 
+    const currentTasks = Array.isArray(tasks) ? tasks : [];
     const updated = [
       newTask,
-      ...tasks.map((t, idx) => ({ ...t, position: t.position !== undefined ? t.position + 1 : idx + 1 }))
+      ...currentTasks.map((t, idx) => ({ ...t, position: t.position !== undefined ? t.position + 1 : idx + 1 }))
     ];
     setTasks(updated);
     localStorage.setItem('tp_tasks', JSON.stringify(updated));
@@ -404,7 +372,8 @@ What would you like to accomplish first?`,
 
   const handleDeleteTask = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const updated = tasks.filter(t => t.id !== id);
+    const currentTasks = Array.isArray(tasks) ? tasks : [];
+    const updated = currentTasks.filter(t => t.id !== id);
     setTasks(updated);
     localStorage.setItem('tp_tasks', JSON.stringify(updated));
     if (selectedTaskId === id) {
@@ -414,7 +383,8 @@ What would you like to accomplish first?`,
 
   const handleToggleTask = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const updated = tasks.map(t => {
+    const currentTasks = Array.isArray(tasks) ? tasks : [];
+    const updated = currentTasks.map(t => {
       if (t.id === id) {
         const nextVal = !t.completed;
         if (nextVal) {
@@ -431,7 +401,8 @@ What would you like to accomplish first?`,
 
   const handleToggleSubtask = (taskId: string, subtaskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const updated = tasks.map(t => {
+    const currentTasks = Array.isArray(tasks) ? tasks : [];
+    const updated = currentTasks.map(t => {
       if (t.id === taskId) {
         const updatedSub = t.subtasks.map(s => {
           if (s.id === subtaskId) {
@@ -453,19 +424,20 @@ What would you like to accomplish first?`,
   };
 
   // ============ QUICK INLINE EDIT HANDLERS ============
-  const handleStartQuickEdit = (e: React.MouseEvent | React.FormEvent, task: Task) => {
+  const handleStartQuickEdit = (e: React.MouseEvent, task: Task) => {
     e.stopPropagation();
     setInlineEditingTaskId(task.id);
     setQuickEditTitle(task.title);
     setQuickEditPriority(task.priority);
   };
 
-  const handleSaveQuickEdit = (e: React.MouseEvent | React.FormEvent, taskId: string) => {
+  const handleSaveQuickEdit = (e: React.FormEvent, taskId: string) => {
     e.stopPropagation();
     e.preventDefault();
     if (!quickEditTitle.trim()) return;
 
-    const updated = tasks.map(t => {
+    const currentTasks = Array.isArray(tasks) ? tasks : [];
+    const updated = currentTasks.map(t => {
       if (t.id === taskId) {
         return {
           ...t,
@@ -519,7 +491,8 @@ What would you like to accomplish first?`,
 
     setSortBy('custom');
 
-    const reorderedTasks = [...tasks];
+    const currentTasks = Array.isArray(tasks) ? tasks : [];
+    const reorderedTasks = [...currentTasks];
     
     reorderedTasks.forEach((t, index) => {
       if (t.position === undefined) {
@@ -555,95 +528,7 @@ What would you like to accomplish first?`,
     setDragOverTaskId(null);
   };
 
-  // ============ DYNAMIC URGENCY CALCULATION ============
-  const getUrgencyDetails = (deadlineStr: string) => {
-    const now = new Date();
-    const due = new Date(deadlineStr);
-    const diffMs = due.getTime() - now.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-
-    if (diffHours < 0) {
-      return {
-        level: 'urgent' as const,
-        label: 'OVERDUE',
-        pct: 100,
-        color: '#FF5F5F',
-        emoji: '🚨'
-      };
-    }
-    if (diffHours < 24) {
-      return {
-        level: 'urgent' as const,
-        label: `${Math.round(diffHours)}h left`,
-        pct: 95,
-        color: '#FF5F5F',
-        emoji: '🔴'
-      };
-    }
-    if (diffHours < 72) {
-      const days = Math.round(diffHours / 24);
-      return {
-        level: 'soon' as const,
-        label: `${days}d left`,
-        pct: 65,
-        color: '#FFD166',
-        emoji: '🟡'
-      };
-    }
-    const days = Math.round(diffHours / 24);
-    const pct = Math.max(15, 50 - days * 2);
-    return {
-      level: 'ok' as const,
-      label: `${days}d left`,
-      pct: pct,
-      color: '#4FFFB0',
-      emoji: '🟢'
-    };
-  };
-
-  const renderUrgencyCircle = (pct: number, color: string, label: string, completed: boolean) => {
-    const r = 18;
-    const circ = 2 * Math.PI * r;
-    const offset = circ - (pct / 100) * circ;
-
-    return (
-      <div className="relative w-11 h-11 flex-shrink-0">
-        <svg className="w-full h-full -rotate-90">
-          <circle className="fill-none stroke-[#1E3355] stroke-[3]" cx="22" cy="22" r={r} />
-          <circle
-            className="fill-none stroke-[3] stroke-linecap-round transition-all duration-1000"
-            cx="22"
-            cy="22"
-            r={r}
-            stroke={completed ? '#6B8CAE' : color}
-            strokeDasharray={circ}
-            strokeDashoffset={completed ? 0 : offset}
-          />
-        </svg>
-        <span
-          className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-center leading-none"
-          style={{ color: completed ? '#6B8CAE' : color }}
-        >
-          {completed ? <Check className="w-4 h-4" /> : label}
-        </span>
-      </div>
-    );
-  };
-
-  const getCategoryTheme = (category: string) => {
-    switch (category) {
-      case 'work': return { icon: <Briefcase className="w-3.5 h-3.5" />, emoji: '💼', label: 'Work', bg: 'rgba(123,97,255,0.15)', text: '#7B61FF' };
-      case 'study': return { icon: <GraduationCap className="w-3.5 h-3.5" />, emoji: '📚', label: 'Study', bg: 'rgba(255,209,102,0.15)', text: '#FFD166' };
-      case 'personal': return { icon: <Home className="w-3.5 h-3.5" />, emoji: '🏠', label: 'Personal', bg: 'rgba(79,255,176,0.15)', text: '#4FFFB0' };
-      case 'health': return { icon: <Activity className="w-3.5 h-3.5" />, emoji: '💪', label: 'Health', bg: 'rgba(255,95,95,0.15)', text: '#FF5F5F' };
-      case 'finance': return { icon: <DollarSign className="w-3.5 h-3.5" />, emoji: '💰', label: 'Finance', bg: 'rgba(236,72,153,0.15)', text: '#EC4899' };
-      default: return { icon: <ClipboardList className="w-3.5 h-3.5" />, emoji: '📌', label: 'General', bg: 'rgba(107,140,174,0.15)', text: '#6B8CAE' };
-    }
-  };
-
   // ============ INTERACTIVE AI ASSISTANT TRIGGERS ============
-
-  // Helper to handle chat stream and update state chunk by chunk
   const streamChatResponse = async (response: Response, aiMessageId: string) => {
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
@@ -664,7 +549,6 @@ What would you like to accomplish first?`,
       }
     }
     
-    // Once streaming is complete, save the chat history to localStorage
     setChatMessages(prev => {
       const updated = prev.map(msg => msg.id === aiMessageId ? { ...msg, text: accumulatedText } : msg);
       localStorage.setItem('tp_chat_history', JSON.stringify(updated));
@@ -672,14 +556,12 @@ What would you like to accomplish first?`,
     });
   };
 
-  // Analyze a task as soon as it's selected or added
   const analyzeTaskDirectly = async (task: Task, currentTasks = tasks) => {
     setIsLoading(true);
     setAgentStatus('thinking');
     setActiveTab('chat');
 
     const aiMessageId = (Date.now() + 1).toString();
-    // Add user question & blank AI message first so user gets instant visual feedback
     setChatMessages(prev => [
       ...prev,
       {
@@ -709,7 +591,6 @@ What would you like to accomplish first?`,
       });
 
       if (!response.ok) throw new Error('Failed API call');
-      
       await streamChatResponse(response, aiMessageId);
     } catch (e: any) {
       console.error('Error analyzing task:', e);
@@ -720,14 +601,12 @@ What would you like to accomplish first?`,
     }
   };
 
-  // Breakdown a task into interactive subtasks
   const handleBreakdownTask = async (task: Task, e: React.MouseEvent) => {
     e.stopPropagation();
     setIsLoading(true);
     setAgentStatus('thinking');
     setActiveTab('chat');
 
-    // Add user request visually
     const userMessageId = Date.now().toString();
     setChatMessages(prev => [
       ...prev,
@@ -754,11 +633,9 @@ What would you like to accomplish first?`,
       const data = await response.json();
 
       if (data.subtasks && data.subtasks.length > 0) {
-        // Play sound and trigger dual vibration on breakdown completion
         playBreakdownSound();
         triggerVibration();
 
-        // Map response array to our Subtask schema
         const mappedSubtasks: Subtask[] = data.subtasks.map((s: any, idx: number) => ({
           id: `sub-${task.id}-${idx}-${Date.now()}`,
           title: s.title,
@@ -766,13 +643,17 @@ What would you like to accomplish first?`,
           duration: s.duration || 30
         }));
 
-        // Update the tasks state with these new interactive subtasks
-        setTasks(prev => prev.map(t => {
-          if (t.id === task.id) {
-            return { ...t, subtasks: [...t.subtasks, ...mappedSubtasks] };
-          }
-          return t;
-        }));
+        setTasks(prev => {
+          const currentT = Array.isArray(prev) ? prev : [];
+          const updated = currentT.map(t => {
+            if (t.id === task.id) {
+              return { ...t, subtasks: [...t.subtasks, ...mappedSubtasks] };
+            }
+            return t;
+          });
+          localStorage.setItem('tp_tasks', JSON.stringify(updated));
+          return updated;
+        });
 
         const totalMinutes = mappedSubtasks.reduce((sum, s) => sum + (s.duration || 0), 0);
 
@@ -781,14 +662,7 @@ What would you like to accomplish first?`,
           {
             id: (Date.now() + 1).toString(),
             sender: 'ai',
-            text: `### Subtask Breakdown Created! 🎯
-
-I've successfully analyzed your task **"${task.title}"** and generated **${mappedSubtasks.length} subtasks** (approx. ${totalMinutes} minutes of total effort). 
-
-I have automatically injected these directly into your task card in the sidebar! You can now check them off interactively.
-
-**Generated Steps:**
-${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`,
+            text: `### Subtask Breakdown Created! 🎯\n\nI've successfully analyzed your task **"${task.title}"** and generated **${mappedSubtasks.length} subtasks** (approx. ${totalMinutes} minutes of total effort). \n\nI have automatically injected these directly into your task card in the sidebar! You can now check them off interactively.\n\n**Generated Steps:**\n${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`,
             timestamp: new Date().toLocaleTimeString()
           }
         ]);
@@ -812,7 +686,6 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
     }
   };
 
-  // Generate Daily Schedule
   const handlePlanDay = async () => {
     setIsLoading(true);
     setAgentStatus('thinking');
@@ -830,7 +703,6 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
       setScheduleData(data);
     } catch (e: any) {
       console.error(e);
-      // Fallback
       setScheduleData({
         days: [
           {
@@ -850,7 +722,6 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
     }
   };
 
-  // Generate strategic insights
   const handleFullAnalysis = async () => {
     setIsLoading(true);
     setAgentStatus('thinking');
@@ -863,13 +734,14 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
         body: JSON.stringify({ tasks: tasks })
       });
 
-      if (!response.ok) throw new Error('API insights error');
+      if (!response.ok) throw new Error('Insights error');
       const data = await response.json();
       setInsights(data.insights || []);
     } catch (e: any) {
       console.error(e);
       setInsights([
-        { icon: "💡", title: "Tackle bottlenecks first", text: "Identify the task with the tightest deadline and block out 45 minutes of absolute focus." },
+        { icon: "📉", title: "Low Overdue Density", text: "You have a balanced task layout. Keep knocking down medium priority items to avoid stack accumulation." },
+        { icon: "☕", title: "Buffer Optimization", text: "Integrate 10-minute breaks every 90 minutes to maintain cognitive power." },
         { icon: "⚡", title: "Single-Tasking Power", text: "Turn off notifications when tackling high priority items to avoid cognitive switching overhead." }
       ]);
     } finally {
@@ -878,7 +750,6 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
     }
   };
 
-  // Send conversational chat message
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!chatInput.trim() || isLoading) return;
@@ -886,7 +757,6 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
     const userMsg = chatInput.trim();
     setChatInput('');
 
-    // Render User Message
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       sender: 'user',
@@ -913,7 +783,7 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
         body: JSON.stringify({
           message: userMsg,
           tasks: tasks,
-          history: chatMessages.slice(-10), // Send recent context history
+          history: chatMessages.slice(-10),
           localTime: new Date().toLocaleString()
         })
       });
@@ -941,13 +811,7 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
       console.error(err);
       setChatMessages(prev => prev.map(msg => msg.id === aiMessageId ? {
         ...msg,
-        text: `I had a temporary connection hiccup with our servers, but I've processed your message locally!
-
-Here are some helpful recommended actions:
-1. **Try refreshing**: A quick page reload can restore live connection sync.
-2. **Review your tasks**: Keep adding and updating tasks in the sidebar to feed new data to our local cognitive engine.
-
-*Your session and task planner remain 100% active offline.*`
+        text: `I had a temporary connection hiccup with our servers, but I've processed your message locally!\n\nHere are some helpful recommended actions:\n1. **Try refreshing**: A quick page reload can restore live connection sync.\n2. **Review your tasks**: Keep adding and updating tasks in the sidebar to feed new data to our local cognitive engine.\n\n*Your session and task planner remain 100% active offline.*`
       } : msg));
     } finally {
       setIsLoading(false);
@@ -955,138 +819,105 @@ Here are some helpful recommended actions:
     }
   };
 
-  // Quick prompt buttons
-  const triggerQuickAction = (text: string) => {
-    setChatInput(text);
-    setTimeout(() => {
-      const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
-      // Triggers send with current input
-    });
+  const handleClearChat = () => {
+    localStorage.removeItem('tp_chat_history');
+    setChatMessages([
+      {
+        id: 'welcome',
+        sender: 'ai',
+        text: `### Welcome to **TaskPulse AI**! ⚡\n\nI'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use our custom on-device Cognitive Engine to help you plan your workload.\n\n**What I can do for you:**\n*   **Deconstruct complex tasks**: Click **"Breakdown"** on any task card to generate interactive subtasks.\n*   **Build optimized schedules**: Click **"Plan Day"** or the button below to generate an hour-by-hour planner.\n*   **Analyze workload bottlenecks**: Get real-time productivity insights by clicking **"Full Analysis"**.\n\nWhat would you like to accomplish first?`,
+        timestamp: new Date().toLocaleTimeString()
+      }
+    ]);
   };
 
-  // Helper to format AI replies nicely (converts simple markdown heading or bullet styles)
-  const formatText = (text: string) => {
-    return text.split('\n').map((line, idx) => {
-      let content = line;
-      // Match headings
-      if (content.startsWith('### ')) {
-        return <h3 key={idx} className="text-base font-bold text-[#4FFFB0] mt-3 mb-1 font-syne">{content.replace('### ', '')}</h3>;
-      }
-      if (content.startsWith('## ')) {
-        return <h2 key={idx} className="text-lg font-extrabold text-[#7B61FF] mt-4 mb-2 font-syne">{content.replace('## ', '')}</h2>;
-      }
-      if (content.startsWith('# ')) {
-        return <h1 key={idx} className="text-xl font-black text-[#7B61FF] mt-5 mb-3 font-syne">{content.replace('# ', '')}</h1>;
-      }
-      // Bold text formatting
-      const boldRegex = /\*\*(.*?)\*\*/g;
-      const parts = [];
-      let lastIdx = 0;
-      let match;
-      while ((match = boldRegex.exec(content)) !== null) {
-        if (match.index > lastIdx) {
-          parts.push(content.substring(lastIdx, match.index));
-        }
-        parts.push(<strong key={match.index} className="text-[#4FFFB0] font-semibold">{match[1]}</strong>);
-        lastIdx = boldRegex.lastIndex;
-      }
-      if (lastIdx < content.length) {
-        parts.push(content.substring(lastIdx));
-      }
+  function selectTaskDirectly(id: string) {
+    setSelectedTaskId(id);
+    const currentTasks = Array.isArray(tasks) ? tasks : [];
+    const task = currentTasks.find(t => t.id === id);
+    if (task) {
+      setFocusedTask(task);
+      setMobileSidebarOpen(false);
+      analyzeTaskDirectly(task, currentTasks);
+    }
+  }
 
-      const finalLine = parts.length > 0 ? parts : content;
-
-      // Match bullets
-      if (line.trim().startsWith('* ') || line.trim().startsWith('- ')) {
-        const bulletText = line.trim().replace(/^[-*]\s+/, '');
-        return (
-          <li key={idx} className="list-disc ml-5 my-1 text-[#E8F4FD] opacity-95 text-sm">
-            {bulletText.includes('**') ? finalLine : bulletText}
-          </li>
-        );
-      }
-
-      // Standard paragraph
-      return <p key={idx} className="my-1.5 text-sm leading-relaxed text-[#E8F4FD]/90">{finalLine}</p>;
-    });
-  };
-
-  // Stats Counters
-  const pendingCount = tasks.filter(t => !t.completed).length;
-  const overdueCount = tasks.filter(t => {
+  // Count summaries
+  const currentTasks = Array.isArray(tasks) ? tasks : [];
+  const pendingCount = currentTasks.filter(t => !t.completed).length;
+  const overdueCount = currentTasks.filter(t => {
     if (t.completed) return false;
     const due = new Date(t.deadline);
-    return due.getTime() < Date.now();
+    return !isNaN(due.getTime()) && due.getTime() < Date.now();
   }).length;
-  const completedCount = tasks.filter(t => t.completed).length;
+  const completedCount = currentTasks.filter(t => t.completed).length;
 
   return (
-    <div id="taskpulse-app" className="flex flex-col h-screen bg-[#030712] text-[#E8F4FD] font-sans selection:bg-[#4FFFB0]/30 relative overflow-hidden">
+    <div id="taskpulse-app" className="flex flex-col h-screen bg-[#070A13] text-slate-100 font-sans selection:bg-emerald-500/30 relative overflow-hidden">
       
-      {/* Liquid Glass vibrant ambient background refractions */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-[#4FFFB0]/15 blur-[120px] pointer-events-none animate-pulse duration-[10s]" />
-      <div className="absolute bottom-[10%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-[#7B61FF]/12 blur-[150px] pointer-events-none animate-pulse duration-[15s]" />
-      <div className="absolute top-[40%] left-[20%] w-[40vw] h-[40vw] rounded-full bg-[#3B82F6]/8 blur-[130px] pointer-events-none animate-pulse duration-[12s]" />
-      <div className="absolute bottom-[40%] right-[30%] w-[35vw] h-[35vw] rounded-full bg-[#FF5F5F]/6 blur-[110px] pointer-events-none animate-pulse duration-[8s]" />
+      {/* Dynamic ambient glass lighting spots */}
+      <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-emerald-500/5 blur-[120px] pointer-events-none animate-pulse duration-[12s]" />
+      <div className="absolute bottom-[10%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-indigo-500/5 blur-[150px] pointer-events-none animate-pulse duration-[18s]" />
 
       {/* HEADER */}
-      <header id="header" className="bg-white/[0.02] backdrop-blur-xl border-b border-white/10 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
+      <header id="header" className="bg-slate-900/40 backdrop-blur-xl border-b border-slate-850 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-3">
-          {/* Mobile hamburger toggle */}
           <button
             type="button"
             onClick={() => setMobileSidebarOpen(prev => !prev)}
-            className="md:hidden p-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-[#4FFFB0] hover:text-[#3DEBA0] transition-colors focus:outline-none cursor-pointer"
+            className="md:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-emerald-400 hover:text-emerald-300 hover:bg-slate-850 transition-colors focus:outline-none cursor-pointer"
             title="Toggle Sidebar"
           >
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#4FFFB0] to-[#3B82F6] relative flex items-center justify-center border border-white/20">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-400 to-indigo-500 relative flex items-center justify-center border border-white/10 shadow-lg shadow-emerald-500/5">
             <span className="text-xs">⚡</span>
           </div>
-          <span className="font-extrabold text-xl tracking-tight font-syne">
-            Task<span className="text-[#4FFFB0]">Pulse</span>
+          <span className="font-extrabold text-lg tracking-tight">
+            Task<span className="text-emerald-400">Pulse</span>
           </span>
         </div>
+
         <div className="flex items-center gap-3">
-          {tasks.filter(t => !t.completed).length > 0 && (
+          {pendingCount > 0 && (
             <button
               onClick={() => setShowUnfinishedModal(true)}
-              className="flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 hover:border-red-500/40 text-[#FF5F5F] px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer"
-              title="You have unfinished tasks. Click to view alert!"
+              className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 hover:border-rose-500/35 text-rose-400 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer"
+              title="You have unfinished tasks requiring your attention!"
             >
-              <Flame className="w-3.5 h-3.5 text-[#FF5F5F]" />
-              <span className="hidden sm:inline">{tasks.filter(t => !t.completed).length} Unfinished</span>
-              <span className="sm:hidden">{tasks.filter(t => !t.completed).length}</span>
+              <Flame className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+              <span className="hidden sm:inline">{pendingCount} Pending</span>
+              <span className="sm:hidden">{pendingCount}</span>
             </button>
           )}
+
           {apiKeyStatus === null ? (
-            <div className="flex items-center gap-2 bg-white/[0.04] backdrop-blur-md border border-white/10 px-3.5 py-1.5 rounded-full text-xs" title="Verifying Google Gemini API credentials...">
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-full text-xs">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-              <span className="text-[#6B8CAE] font-semibold font-syne">Connecting AI Engine...</span>
+              <span className="text-slate-400 font-bold">Connecting Engine...</span>
             </div>
           ) : apiKeyStatus.status === 'working' ? (
-            <div className="flex items-center gap-2 bg-[#4FFFB0]/10 backdrop-blur-md border border-[#4FFFB0]/30 px-3.5 py-1.5 rounded-full text-xs" title={apiKeyStatus.message}>
+            <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 rounded-full text-xs" title={apiKeyStatus.message}>
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4FFFB0] opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#4FFFB0]"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span className="text-[#4FFFB0] font-semibold font-syne">Gemini AI Online</span>
+              <span className="text-emerald-400 font-bold">Gemini AI Online</span>
             </div>
           ) : apiKeyStatus.status === 'error' ? (
             <div 
-              className="flex items-center gap-2 bg-[#FFD166]/10 backdrop-blur-md border border-[#FFD166]/30 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-[#FFD166]/20 transition-all" 
+              className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-amber-500/15 transition-all" 
               title={`${apiKeyStatus.message}. Click for diagnostic details.`} 
               onClick={() => alert(`Gemini Key Diagnostic Error:\n\n${apiKeyStatus.message}\n\nRunning in local fallback simulator.`)}
             >
-              <span className="w-2 h-2 rounded-full bg-[#FFD166] animate-pulse" />
-              <span className="text-[#FFD166] font-semibold font-syne flex items-center gap-1">Gemini Error ⚠️</span>
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-amber-400 font-bold flex items-center gap-1">Gemini Error ⚠️</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 bg-white/[0.04] backdrop-blur-md border border-white/10 px-3.5 py-1.5 rounded-full text-xs" title={`${apiKeyStatus.message}. Running in high-performance local simulation mode.`}>
-              <span className="w-2 h-2 rounded-full bg-[#6B8CAE]" />
-              <span className="text-[#6B8CAE] font-semibold font-syne">Local Cognitive Engine</span>
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-full text-xs" title={`${apiKeyStatus.message}. Running in high-performance local simulation mode.`}>
+              <span className="w-2 h-2 rounded-full bg-slate-400" />
+              <span className="text-slate-400 font-bold">Local Cognitive Engine</span>
             </div>
           )}
         </div>
@@ -1098,7 +929,7 @@ Here are some helpful recommended actions:
         {/* Mobile Sidebar overlay backdrop */}
         {mobileSidebarOpen && (
           <div 
-            className="fixed inset-0 bg-black/40 backdrop-blur-md z-30 md:hidden"
+            className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-30 md:hidden"
             onClick={() => setMobileSidebarOpen(false)}
           />
         )}
@@ -1106,154 +937,63 @@ Here are some helpful recommended actions:
         {/* LEFT PANEL: Task Sidebar */}
         <aside 
           id="sidebar" 
-          className={`bg-[#030712]/95 md:bg-white/[0.02] md:backdrop-blur-xl border-r border-white/10 flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] fixed md:static top-16 bottom-0 left-0 z-40 w-[320px] md:w-auto transition-transform duration-300 transform ${
+          className={`bg-[#070A13]/95 md:bg-slate-900/10 border-r border-slate-850/80 flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] fixed md:static top-16 bottom-0 left-0 z-40 w-[320px] md:w-auto transition-transform duration-300 transform ${
             mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
           }`}
         >
-          
           {/* Header & Task Creation Form */}
-          <div className="p-5 border-b border-white/10 flex-shrink-0 bg-transparent">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[#6B8CAE] flex items-center gap-2 font-syne">
-                <ClipboardList className="w-4 h-4 text-[#7B61FF]" /> My Tasks
-              </h2>
-              <button
-                type="button"
-                onClick={handleExportTasks}
-                className="text-[10px] font-bold uppercase tracking-wide text-[#4FFFB0] hover:text-[#3DEBA0] bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 px-2 py-1 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-md focus:outline-none"
-                title="Export tasks to JSON file backup"
-              >
-                <Download className="w-3 h-3 text-[#4FFFB0]" /> Backup JSON
-              </button>
-            </div>
-            
-            <form onSubmit={handleAddTask} className="flex flex-col gap-3">
-              <input
-                type="text"
-                placeholder="What needs to get done?"
-                value={taskTitle}
-                onChange={e => setTaskTitle(e.target.value)}
-                maxLength={100}
-                className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] px-4 py-2.5 rounded-lg text-sm outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all"
-              />
-              
-              <textarea
-                placeholder="Brief description (optional)..."
-                value={taskDesc}
-                onChange={e => setTaskDesc(e.target.value)}
-                maxLength={300}
-                className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] px-4 py-2 rounded-lg text-xs outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all resize-none h-14"
-              />
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">Deadline</label>
-                  <input
-                    type="datetime-local"
-                    value={taskDeadline}
-                    onChange={e => setTaskDeadline(e.target.value)}
-                    className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">Category</label>
-                  <select
-                    value={taskCategory}
-                    onChange={e => setTaskCategory(e.target.value)}
-                    className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all cursor-pointer"
-                  >
-                    <option value="work" className="bg-[#0D1B2E] text-[#E8F4FD]">💼 Work</option>
-                    <option value="study" className="bg-[#0D1B2E] text-[#E8F4FD]">📚 Study</option>
-                    <option value="personal" className="bg-[#0D1B2E] text-[#E8F4FD]">🏠 Personal</option>
-                    <option value="health" className="bg-[#0D1B2E] text-[#E8F4FD]">💪 Health</option>
-                    <option value="finance" className="bg-[#0D1B2E] text-[#E8F4FD]">💰 Finance</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">Priority</label>
-                  <select
-                    value={taskPriority}
-                    onChange={e => setTaskPriority(e.target.value as any)}
-                    className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all cursor-pointer"
-                  >
-                    <option value="low" className="bg-[#0D1B2E] text-[#E8F4FD]">🟢 Low</option>
-                    <option value="medium" className="bg-[#0D1B2E] text-[#E8F4FD]">🟡 Medium</option>
-                    <option value="high" className="bg-[#0D1B2E] text-[#E8F4FD]">🔴 High</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">Est. Duration</label>
-                  <select
-                    value={taskDuration}
-                    onChange={e => setTaskDuration(Number(e.target.value))}
-                    className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all cursor-pointer"
-                  >
-                    <option value={15} className="bg-[#0D1B2E] text-[#E8F4FD]">15 min</option>
-                    <option value={30} className="bg-[#0D1B2E] text-[#E8F4FD]">30 min</option>
-                    <option value={45} className="bg-[#0D1B2E] text-[#E8F4FD]">45 min</option>
-                    <option value={60} className="bg-[#0D1B2E] text-[#E8F4FD]">60 min</option>
-                    <option value={90} className="bg-[#0D1B2E] text-[#E8F4FD]">90 min</option>
-                    <option value={120} className="bg-[#0D1B2E] text-[#E8F4FD]">120 min</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex gap-2 mt-1">
-                <button
-                  type="submit"
-                  className="flex-1 bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] font-semibold text-xs py-2 px-4 rounded-lg transition-all duration-150 shadow-md shadow-[#4FFFB0]/10 flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add Task
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePlanDay}
-                  className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-[#4FFFB0] hover:text-[#3DEBA0] text-xs py-2 px-3 rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5 font-medium cursor-pointer"
-                  title="Generate a smart daily planner schedule with AI"
-                >
-                  <Calendar className="w-3.5 h-3.5" /> Plan Day
-                </button>
-              </div>
-            </form>
-          </div>
+          <TaskForm
+            taskTitle={taskTitle}
+            setTaskTitle={setTaskTitle}
+            taskDesc={taskDesc}
+            setTaskDesc={setTaskDesc}
+            taskDeadline={taskDeadline}
+            setTaskDeadline={setTaskDeadline}
+            taskCategory={taskCategory}
+            setTaskCategory={setTaskCategory}
+            taskPriority={taskPriority}
+            setTaskPriority={setTaskPriority}
+            taskDuration={taskDuration}
+            setTaskDuration={setTaskDuration}
+            handleAddTask={handleAddTask}
+            handlePlanDay={handlePlanDay}
+            handleExportTasks={handleExportTasks}
+          />
 
           {/* Search bar */}
-          <div className="px-5 py-3 border-b border-white/10 bg-transparent flex items-center gap-2 flex-shrink-0">
+          <div className="px-5 py-3 border-b border-slate-850 bg-transparent flex items-center gap-2 flex-shrink-0">
             <div className="relative w-full">
-              <Search className="w-4 h-4 text-[#6B8CAE] absolute left-3 top-2.5" />
+              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-2.5" />
               <input
                 type="text"
-                placeholder="Search tasks by title or details..."
+                placeholder="Search tasks..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] pl-9 pr-8 py-1.5 rounded-lg text-xs outline-none focus:border-[#4FFFB0] focus:bg-white/[0.06] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all placeholder:text-[#6B8CAE]"
+                className="w-full bg-slate-900/40 border border-slate-850 text-slate-100 pl-9 pr-8 py-1.5 rounded-lg text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder:text-slate-500"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2 cursor-pointer text-[#6B8CAE] hover:text-[#E8F4FD] bg-transparent border-none outline-none"
+                  className="absolute right-2.5 top-2 cursor-pointer text-slate-500 hover:text-slate-300 bg-transparent border-none outline-none"
                 >
-                  <X className="w-4 h-4" />
+                  <Search className="w-4 h-4 rotate-45" />
                 </button>
               )}
             </div>
           </div>
 
-          {/* Sorting & Custom Workflow Preferences Selector */}
-          <div className="px-5 py-2 border-b border-white/5 bg-white/[0.01] flex items-center justify-between text-xs flex-shrink-0">
-            <span className="text-[#6B8CAE] font-medium font-syne text-[10px] uppercase tracking-wider">Priority workflow</span>
-            <div className="flex bg-white/[0.03] border border-white/10 p-0.5 rounded-lg">
+          {/* Sorting preferences selector */}
+          <div className="px-5 py-2.5 border-b border-slate-850/40 bg-slate-900/10 flex items-center justify-between text-xs flex-shrink-0">
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Priority layout</span>
+            <div className="flex bg-slate-950 border border-slate-850 p-0.5 rounded-lg">
               <button
                 type="button"
                 onClick={() => setSortBy('auto')}
-                className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   sortBy === 'auto'
-                    ? 'bg-[#4FFFB0] text-[#050B1A] shadow-sm'
-                    : 'text-[#6B8CAE] hover:text-[#E8F4FD]'
+                    ? 'bg-emerald-400 text-slate-950 font-bold shadow-md'
+                    : 'text-slate-500 hover:text-slate-300'
                 }`}
                 title="Sort automatically by status and deadline urgency"
               >
@@ -1262,10 +1002,10 @@ Here are some helpful recommended actions:
               <button
                 type="button"
                 onClick={() => setSortBy('custom')}
-                className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   sortBy === 'custom'
-                    ? 'bg-[#4FFFB0] text-[#050B1A] shadow-sm'
-                    : 'text-[#6B8CAE] hover:text-[#E8F4FD]'
+                    ? 'bg-emerald-400 text-slate-950 font-bold shadow-md'
+                    : 'text-slate-500 hover:text-slate-300'
                 }`}
                 title="Custom order. Drag and drop tasks in any sequence"
               >
@@ -1276,22 +1016,22 @@ Here are some helpful recommended actions:
 
           {/* Scrollable Task List */}
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar">
-            {tasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                <span className="text-3xl mb-3">🎯</span>
-                <p className="text-sm font-semibold text-[#E8F4FD] font-syne">No tasks planned yet</p>
-                <p className="text-xs text-[#6B8CAE] mt-1">Add tasks above to organize your time and let AI optimize your agenda.</p>
+            {currentTasks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                <span className="text-3xl mb-3 filter drop-shadow-sm">🎯</span>
+                <p className="text-xs font-bold text-slate-200">No tasks planned yet</p>
+                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed font-medium">Add tasks above to organize your goals and let AI optimize your agenda.</p>
               </div>
-            ) : tasks.filter(t => 
+            ) : currentTasks.filter(t => 
                 t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                 (t.description || '').toLowerCase().includes(searchQuery.toLowerCase())
               ).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
                 <span className="text-2xl mb-2">🔍</span>
-                <p className="text-xs font-semibold text-[#6B8CAE]">No tasks match your search</p>
+                <p className="text-xs font-bold text-slate-400">No matching task plans</p>
               </div>
             ) : (
-              tasks
+              currentTasks
                 .filter(t => 
                   t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                   (t.description || '').toLowerCase().includes(searchQuery.toLowerCase())
@@ -1303,277 +1043,54 @@ Here are some helpful recommended actions:
                     return posA - posB;
                   }
                   if (a.completed !== b.completed) return a.completed ? 1 : -1;
-                  return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+                  const timeA = new Date(a.deadline).getTime();
+                  const timeB = new Date(b.deadline).getTime();
+                  const safeA = isNaN(timeA) ? 0 : timeA;
+                  const safeB = isNaN(timeB) ? 0 : timeB;
+                  return safeA - safeB;
                 })
-                .map(task => {
-                  const urg = getUrgencyDetails(task.deadline);
-                  const isSelected = selectedTaskId === task.id;
-                  const catTheme = getCategoryTheme(task.category);
-                  const formatTime = new Date(task.deadline).toLocaleDateString('en-IN', {
-                    day: 'numeric',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  });
-
-                  // Check if the deadline is within the next 2 hours (and task is not completed)
-                  const isWithinTwoHours = !task.completed && (() => {
-                    const deadlineTime = new Date(task.deadline).getTime();
-                    const nowTime = new Date().getTime();
-                    const diffMs = deadlineTime - nowTime;
-                    return diffMs > 0 && diffMs <= 2 * 60 * 60 * 1000;
-                  })();
-
-                  // Calculate remaining time in the day
-                  const now = new Date();
-                  const endOfDay = new Date(now);
-                  endOfDay.setHours(23, 59, 59, 999);
-                  const remainingMs = endOfDay.getTime() - now.getTime();
-                  const remainingMinutes = Math.max(1, Math.round(remainingMs / (1000 * 60)));
-                  const durationPercent = Math.min(100, Math.max(1, Math.round((task.estimatedDuration / remainingMinutes) * 100)));
-
-                  const remHours = Math.floor(remainingMinutes / 60);
-                  const remMins = remainingMinutes % 60;
-                  const formattedRemaining = remHours > 0 ? `${remHours}h ${remMins}m` : `${remMins}m`;
-
-                  return (
-                    <div
-                      key={task.id}
-                      onClick={() => inlineEditingTaskId !== task.id && selectTaskDirectly(task.id)}
-                      draggable={inlineEditingTaskId !== task.id}
-                      onDragStart={(e) => handleDragStart(e, task.id)}
-                      onDragOver={(e) => handleDragOver(e, task.id)}
-                      onDrop={(e) => handleDrop(e, task.id)}
-                      onDragEnd={handleDragEnd}
-                      className={`relative bg-white/[0.02] backdrop-blur-md border rounded-xl p-4 transition-all duration-200 group flex flex-col gap-3 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25 select-none ${
-                        inlineEditingTaskId === task.id ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
-                      } ${
-                        task.completed ? 'border-white/5 opacity-50 bg-white/[0.005]' : isSelected ? 'border-[#4FFFB0]/80 bg-white/[0.06] shadow-md shadow-black/20' : 'border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
-                      } ${
-                        draggingTaskId === task.id ? 'opacity-40 border-dashed border-[#4FFFB0]/40 scale-95' : ''
-                      } ${
-                        dragOverTaskId === task.id ? 'border-t-2 border-t-[#4FFFB0]/80 bg-white/[0.06]' : ''
-                      }`}
-                    >
-                      {/* Accent strip */}
-                      <div
-                        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
-                        style={{ backgroundColor: task.completed ? '#6B8CAE' : urg.color }}
-                      />
-
-                      {/* Quick Edit icon overlay revealed on hover */}
-                      {!task.completed && inlineEditingTaskId !== task.id && (
-                        <button
-                          type="button"
-                          onClick={(e) => handleStartQuickEdit(e, task)}
-                          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 hover:bg-[#4FFFB0] hover:text-[#050B1A] text-[#E8F4FD] p-1.5 rounded-lg border border-white/10 hover:border-[#4FFFB0]/30 shadow-md cursor-pointer z-10"
-                          title="Quick Edit Task"
-                        >
-                          <Pencil className="w-3 h-3" />
-                        </button>
-                      )}
-
-                      {inlineEditingTaskId === task.id ? (
-                        <form
-                          onSubmit={(e) => handleSaveQuickEdit(e, task.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex flex-col gap-3 py-1 pl-1.5"
-                        >
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE] font-syne">
-                              Quick Edit Title
-                            </label>
-                            <input
-                              type="text"
-                              value={quickEditTitle}
-                              onChange={(e) => setQuickEditTitle(e.target.value)}
-                              className="w-full bg-[#050B1A]/80 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-[#E8F4FD] focus:outline-none focus:border-[#4FFFB0] transition-colors"
-                              placeholder="Task title..."
-                              autoFocus
-                              required
-                            />
-                          </div>
-
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE] font-syne">
-                              Priority Level
-                            </label>
-                            <div className="grid grid-cols-3 gap-1.5">
-                              {(['low', 'medium', 'high'] as const).map((pri) => (
-                                <button
-                                  key={pri}
-                                  type="button"
-                                  onClick={() => setQuickEditPriority(pri)}
-                                  className={`py-1 text-[10px] font-bold uppercase tracking-wider rounded border transition-all cursor-pointer ${
-                                    quickEditPriority === pri
-                                      ? pri === 'high'
-                                        ? 'bg-[#FF5F5F]/20 text-[#FF5F5F] border-[#FF5F5F]/40 font-bold'
-                                        : pri === 'medium'
-                                        ? 'bg-[#FFD166]/20 text-[#FFD166] border-[#FFD166]/40 font-bold'
-                                        : 'bg-[#4FFFB0]/20 text-[#4FFFB0] border-[#4FFFB0]/40 font-bold'
-                                      : 'bg-white/[0.02] text-[#6B8CAE] border-white/5 hover:border-white/10 hover:text-[#E8F4FD]'
-                                  }`}
-                                >
-                                  {pri}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-end gap-2 mt-1 pt-2 border-t border-white/5">
-                            <button
-                              type="button"
-                              onClick={handleCancelQuickEdit}
-                              className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE] hover:text-[#E8F4FD] px-2.5 py-1.5 rounded bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="submit"
-                              className="text-[10px] font-bold uppercase tracking-wider bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] px-3 py-1.5 rounded flex items-center gap-1 shadow-md shadow-black/20 cursor-pointer font-bold"
-                            >
-                              <Save className="w-3 h-3" /> Save
-                            </button>
-                          </div>
-                        </form>
-                      ) : (
-                        <>
-                          {/* Header row */}
-                          <div className="flex items-start justify-between gap-2 pl-1.5">
-                            <div className="flex flex-col gap-1.5 flex-1">
-                              <h3 className={`text-sm font-bold tracking-tight leading-snug group-hover:text-[#4FFFB0] transition-colors flex items-center flex-wrap gap-1.5 ${task.completed ? 'line-through text-[#6B8CAE]' : 'text-[#E8F4FD]'}`}>
-                                {isWithinTwoHours && (
-                                  <span className="inline-flex items-center gap-1 bg-[#FF5F5F]/15 text-[#FF5F5F] text-[9px] font-bold px-1.5 py-0.5 rounded border border-[#FF5F5F]/30 animate-pulse" title="Due in less than 2 hours!">
-                                    <span className="relative flex h-1.5 w-1.5">
-                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FF5F5F] opacity-75"></span>
-                                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#FF5F5F]"></span>
-                                    </span>
-                                    URGENT
-                                  </span>
-                                )}
-                                <span>{task.title}</span>
-                              </h3>
-
-                              {/* Est. Duration vs Day Remaining Progress Bar */}
-                              <div className="flex flex-col gap-1 mt-0.5">
-                                <div className="w-full bg-white/[0.08] rounded-full h-1 overflow-hidden border border-white/5 relative" title={`${task.estimatedDuration}m is ${durationPercent}% of remaining day (${formattedRemaining} left)`}>
-                                  <div 
-                                    className={`h-full rounded-full transition-all duration-500 ${task.completed ? 'bg-[#6B8CAE]/50' : 'bg-gradient-to-r from-[#4FFFB0] to-[#3B82F6]'}`}
-                                    style={{ width: `${durationPercent}%` }}
-                                  />
-                                </div>
-                                <div className="flex items-center justify-between text-[9px] text-[#6B8CAE] font-mono leading-none">
-                                  <span>Est: <strong className={task.completed ? 'text-[#6B8CAE]' : 'text-[#4FFFB0]'}>{task.estimatedDuration}m</strong></span>
-                                  <span>{formattedRemaining} left today ({durationPercent}%)</span>
-                                </div>
-                              </div>
-
-                              {task.description && (
-                                <p className="text-[11px] text-[#6B8CAE] line-clamp-2 leading-relaxed mt-0.5">
-                                  {task.description}
-                                </p>
-                              )}
-                            </div>
-                            {renderUrgencyCircle(urg.pct, urg.color, urg.label, task.completed)}
-                          </div>
-
-                          {/* Interactive Subtasks list (Rich feature block) */}
-                          {task.subtasks && task.subtasks.length > 0 && (
-                            <div className="pl-1.5 border-l border-white/10 ml-2 py-1 flex flex-col gap-2 bg-white/[0.03] border border-white/5 p-2 rounded-lg">
-                              <div className="text-[10px] font-bold text-[#6B8CAE] uppercase tracking-wider mb-1 flex items-center justify-between">
-                                <span>Steps ({task.subtasks.filter(s => s.completed).length}/{task.subtasks.length})</span>
-                                <span className="text-xs text-[#4FFFB0] font-mono">{Math.round((task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100)}%</span>
-                              </div>
-                              {task.subtasks.map(s => (
-                                <div
-                                  key={s.id}
-                                  onClick={(e) => handleToggleSubtask(task.id, s.id, e)}
-                                  className="flex items-center gap-2 text-[11px] text-[#E8F4FD] hover:text-[#4FFFB0] transition-colors py-0.5 cursor-pointer"
-                                >
-                                  {s.completed ? (
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-[#4FFFB0] flex-shrink-0" />
-                                  ) : (
-                                    <Circle className="w-3.5 h-3.5 text-[#6B8CAE] group-hover:text-[#4FFFB0] flex-shrink-0" />
-                                  )}
-                                  <span className={s.completed ? 'line-through text-[#6B8CAE]' : ''}>
-                                    {s.title} <span className="text-[#6B8CAE] font-mono text-[9px]">({s.duration}m)</span>
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Metadata row */}
-                          <div className="flex items-center justify-between gap-1 pl-1.5 flex-wrap">
-                            <div className="flex items-center gap-1.5">
-                              <span
-                                className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 font-syne"
-                                style={{ backgroundColor: catTheme.bg, color: catTheme.text }}
-                              >
-                                {catTheme.icon}
-                                {catTheme.label}
-                              </span>
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                task.priority === 'high' ? 'bg-[#FF5F5F]/15 text-[#FF5F5F]' : task.priority === 'medium' ? 'bg-[#FFD166]/15 text-[#FFD166]' : 'bg-[#4FFFB0]/15 text-[#4FFFB0]'
-                              }`}>
-                                {task.priority.toUpperCase()}
-                              </span>
-                            </div>
-                            <span className="text-[10px] text-[#6B8CAE] font-mono flex items-center gap-1">
-                              <Clock className="w-3 h-3" /> {formatTime}
-                            </span>
-                          </div>
-
-                          {/* Action buttons */}
-                          <div className="flex items-center justify-between pt-2 border-t border-white/10 pl-1.5 mt-1">
-                            <button
-                              onClick={(e) => handleToggleTask(task.id, e)}
-                              className="text-xs text-[#6B8CAE] hover:text-[#4FFFB0] transition-colors flex items-center gap-1 bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 px-2.5 py-1 rounded-md cursor-pointer"
-                            >
-                              {task.completed ? <RotateCcw className="w-3 h-3" /> : <Check className="w-3 h-3 text-[#4FFFB0]" />}
-                              {task.completed ? 'Undo' : 'Complete'}
-                            </button>
-
-                            <div className="flex items-center gap-2">
-                              {!task.completed && task.subtasks.length === 0 && (
-                                <button
-                                  onClick={(e) => handleBreakdownTask(task, e)}
-                                  className="text-[11px] text-[#4FFFB0] hover:text-[#3DEBA0] transition-colors flex items-center gap-1 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 px-2 py-1 rounded-md cursor-pointer"
-                                  title="Use TaskPulse's local cognitive engine to break this task down into bite-sized actionable checklists"
-                                >
-                                  <Bot className="w-3 h-3" /> Break down
-                                </button>
-                              )}
-                              <button
-                                onClick={(e) => handleDeleteTask(task.id, e)}
-                                className="text-xs text-[#6B8CAE] hover:text-[#FF5F5F] transition-colors p-1 hover:bg-[#FF5F5F]/10 rounded-md cursor-pointer"
-                                title="Delete task"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })
+                .map(task => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    isSelected={selectedTaskId === task.id}
+                    selectTaskDirectly={selectTaskDirectly}
+                    inlineEditingTaskId={inlineEditingTaskId}
+                    quickEditTitle={quickEditTitle}
+                    setQuickEditTitle={setQuickEditTitle}
+                    quickEditPriority={quickEditPriority}
+                    setQuickEditPriority={setQuickEditPriority}
+                    handleStartQuickEdit={handleStartQuickEdit}
+                    handleSaveQuickEdit={handleSaveQuickEdit}
+                    handleCancelQuickEdit={handleCancelQuickEdit}
+                    handleToggleTask={handleToggleTask}
+                    handleBreakdownTask={handleBreakdownTask}
+                    handleDeleteTask={handleDeleteTask}
+                    handleToggleSubtask={handleToggleSubtask}
+                    draggingTaskId={draggingTaskId}
+                    dragOverTaskId={dragOverTaskId}
+                    handleDragStart={handleDragStart}
+                    handleDragOver={handleDragOver}
+                    handleDrop={handleDrop}
+                    handleDragEnd={handleDragEnd}
+                  />
+                ))
             )}
           </div>
 
           {/* Footer Stats summary info */}
-          <div id="stats-summary" className="p-4 border-t border-white/10 bg-transparent flex-shrink-0 grid grid-cols-3 gap-2 text-center">
+          <div id="stats-summary" className="p-4 border-t border-slate-850 bg-slate-950/20 flex-shrink-0 grid grid-cols-3 gap-2 text-center">
             <div className="flex flex-col">
-              <span className="text-base font-extrabold text-[#FF5F5F] font-syne">{overdueCount}</span>
-               <span className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">🚨 Overdue</span>
+              <span className="text-sm font-extrabold text-rose-400 font-mono">{overdueCount}</span>
+               <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">🚨 Overdue</span>
             </div>
-            <div className="flex flex-col border-x border-white/10">
-              <span className="text-base font-extrabold text-[#4FFFB0] font-syne">{pendingCount}</span>
-              <span className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">⏳ Pending</span>
+            <div className="flex flex-col border-x border-slate-850/60">
+              <span className="text-sm font-extrabold text-emerald-400 font-mono">{pendingCount}</span>
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">⏳ Pending</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-base font-extrabold text-[#6B8CAE] font-syne">{completedCount}</span>
-              <span className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">✅ Done</span>
+              <span className="text-sm font-extrabold text-slate-400 font-mono">{completedCount}</span>
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">✅ Done</span>
             </div>
           </div>
         </aside>
@@ -1582,55 +1099,56 @@ Here are some helpful recommended actions:
         <main id="main-content" className="flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] bg-transparent">
           
           {/* Main Panel Header Banner */}
-          <div className="px-6 py-4 border-b border-white/10 bg-white/[0.02] backdrop-blur-md flex items-center justify-between flex-shrink-0">
+          <div className="px-6 py-4 border-b border-slate-850 bg-slate-900/10 flex items-center justify-between flex-shrink-0 flex-wrap gap-3">
             <div>
-              <h1 className="text-lg font-bold text-[#E8F4FD] font-syne flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-[#4FFFB0]" /> TaskPulse AI Agent
+              <h1 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-emerald-400" /> TaskPulse Workspace
               </h1>
-              <p className="text-xs text-[#6B8CAE] mt-0.5">
+              <p className="text-xs text-slate-400 mt-0.5 font-medium">
                 {selectedTaskId
-                  ? `Active Focus: "${tasks.find(t => t.id === selectedTaskId)?.title}"`
-                  : 'Select any task in the sidebar to run personalized AI assessments'}
+                  ? `Active Focus Context: "${currentTasks.find(t => t.id === selectedTaskId)?.title}"`
+                  : 'Select any task checklist in the sidebar to load analytical checking'}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleFullAnalysis}
-                className="bg-gradient-to-r from-[#7B61FF] to-[#5B41FF] hover:from-[#6B51EF] hover:to-[#4B31EF] text-white text-xs font-bold py-1.5 px-3 rounded-lg shadow-lg shadow-[#7B61FF]/10 transition-all flex items-center gap-1 cursor-pointer"
+                className="bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-bold py-2 px-3.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-98"
                 title="Get full workload analysis"
               >
-                <Flame className="w-3.5 h-3.5 text-[#4FFFB0]" /> Workload Analysis
+                <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                Analyze Workload
               </button>
             </div>
           </div>
 
           {/* Top Progress Loading Shimmer */}
-          <div className={`h-0.5 w-full bg-white/10 relative overflow-hidden flex-shrink-0 ${agentStatus === 'thinking' ? 'block' : 'hidden'}`}>
-            <div className="absolute top-0 bottom-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-[#4FFFB0] to-transparent animate-shimmer" />
+          <div className={`h-0.5 w-full bg-slate-850 relative overflow-hidden flex-shrink-0 ${agentStatus === 'thinking' ? 'block' : 'hidden'}`}>
+            <div className="absolute top-0 bottom-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-shimmer" />
           </div>
 
           {/* Navigation Tabs */}
-          <div className="px-6 border-b border-white/10 bg-white/[0.01] backdrop-blur-md flex gap-2 flex-shrink-0">
+          <div className="px-6 border-b border-slate-850/60 bg-slate-900/5 flex gap-2 flex-shrink-0">
             <button
               onClick={() => setActiveTab('chat')}
-              className={`py-3 px-4 text-xs font-semibold tracking-wide border-b-2 transition-all cursor-pointer font-syne ${
-                activeTab === 'chat' ? 'text-[#4FFFB0] border-[#4FFFB0]' : 'text-[#6B8CAE] border-transparent hover:text-[#E8F4FD]'
+              className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'chat' ? 'text-emerald-400 border-emerald-400' : 'text-slate-400 border-transparent hover:text-slate-200'
               }`}
             >
-              💬 AI Assistant Chat
+              💬 Companion Chat
             </button>
             <button
               onClick={() => { setActiveTab('schedule'); if (!scheduleData) handlePlanDay(); }}
-              className={`py-3 px-4 text-xs font-semibold tracking-wide border-b-2 transition-all cursor-pointer font-syne ${
-                activeTab === 'schedule' ? 'text-[#4FFFB0] border-[#4FFFB0]' : 'text-[#6B8CAE] border-transparent hover:text-[#E8F4FD]'
+              className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'schedule' ? 'text-emerald-400 border-emerald-400' : 'text-slate-400 border-transparent hover:text-slate-200'
               }`}
             >
               📅 Schedule Planner
             </button>
             <button
               onClick={() => { setActiveTab('insights'); if (insights.length === 0) handleFullAnalysis(); }}
-              className={`py-3 px-4 text-xs font-semibold tracking-wide border-b-2 transition-all cursor-pointer font-syne ${
-                activeTab === 'insights' ? 'text-[#4FFFB0] border-[#4FFFB0]' : 'text-[#6B8CAE] border-transparent hover:text-[#E8F4FD]'
+              className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'insights' ? 'text-emerald-400 border-emerald-400' : 'text-slate-400 border-transparent hover:text-slate-200'
               }`}
             >
               💡 Workload Insights
@@ -1638,264 +1156,37 @@ Here are some helpful recommended actions:
           </div>
 
           {/* VIEWPORT AREA */}
-          <div className="flex-1 overflow-hidden relative flex flex-col bg-transparent backdrop-blur-xl">
+          <div className="flex-1 overflow-hidden relative flex flex-col bg-transparent">
             
             {/* 1. CHAT VIEW */}
             <div className={`flex-1 flex-col overflow-hidden ${activeTab === 'chat' ? 'flex' : 'hidden'}`}>
-              {/* Chat Sub-Header with clear button */}
-              <div className="px-6 py-2.5 border-b border-white/5 bg-white/[0.01] flex items-center justify-between flex-shrink-0">
-                <span className="text-[10px] uppercase tracking-wider text-[#6B8CAE] font-semibold">Active Session History</span>
-                <button
-                  onClick={() => {
-                    if (window.confirm("Are you sure you want to clear the chat history?")) {
-                      localStorage.removeItem('tp_chat_history');
-                      setChatMessages([
-                        {
-                          id: 'welcome',
-                          sender: 'ai',
-                          text: `### Welcome to **TaskPulse AI**! ⚡\n\nI'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use our custom on-device Cognitive Engine to help you plan your workload.\n\n**What I can do for you:**\n*   **Deconstruct complex tasks**: Click **"Break down"** on any task card to generate interactive subtasks.\n*   **Build optimized schedules**: Click **"Plan Day"** or the button below to generate an hour-by-hour planner.\n*   **Analyze workload bottlenecks**: Get real-time productivity insights by clicking **"Full Analysis"**.\n\nWhat would you like to accomplish first?`,
-                          timestamp: new Date().toLocaleTimeString()
-                        }
-                      ]);
-                    }
-                  }}
-                  className="text-[10px] font-bold uppercase tracking-wide text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/15 border border-red-500/20 px-2.5 py-1 rounded transition-all cursor-pointer"
-                >
-                  Clear Chat
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4 custom-scrollbar">
-                {chatMessages.map(msg => (
-                  <div
-                    key={msg.id}
-                    className={`flex gap-3 max-w-[85%] ${msg.sender === 'user' ? 'self-end flex-row-reverse' : 'self-start'}`}
-                  >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 font-bold border ${
-                      msg.sender === 'user'
-                        ? 'bg-white/[0.05] border-white/10 text-[#E8F4FD]'
-                        : 'bg-gradient-to-tr from-[#7B61FF] to-[#4FFFB0] border-transparent text-[#050B1A]'
-                    }`}>
-                      {msg.sender === 'user' ? '👤' : '⚡'}
-                    </div>
-                    
-                    <div className={`rounded-xl p-4 text-sm shadow-md border leading-relaxed ${
-                      msg.sender === 'user'
-                        ? 'bg-white/[0.08] border-white/15 text-[#E8F4FD]'
-                        : 'bg-white/[0.03] border-white/10 text-[#E8F4FD]'
-                    }`}>
-                      {msg.sender === 'ai' ? formatText(msg.text) : <p className="text-sm">{msg.text}</p>}
-                    </div>
-                  </div>
-                ))}
-                
-                {isLoading && (
-                  <div className="flex gap-3 self-start max-w-[80%]">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs bg-gradient-to-tr from-[#7B61FF] to-[#4FFFB0] text-[#050B1A] font-bold">
-                      ⚡
-                    </div>
-                    <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 flex items-center gap-1.5 shadow-md">
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-bounce" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-bounce [animation-delay:0.2s]" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-bounce [animation-delay:0.4s]" />
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Chat Form Footer */}
-              <div className="p-5 border-t border-white/10 bg-transparent flex flex-col gap-3">
-                {/* Prompt suggestion buttons */}
-                <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar scrollbar-none flex-wrap">
-                  <button
-                    onClick={() => { setChatInput('Prioritize all my tasks by deadline and risk'); }}
-                    className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
-                  >
-                    🎯 Prioritize workload
-                  </button>
-                  <button
-                    onClick={() => { setChatInput('What should I work on right now?'); }}
-                    className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
-                  >
-                    ⚡ What now?
-                  </button>
-                  <button
-                    onClick={() => { setChatInput('I feel overwhelmed. Help me focus and build a calm action plan.'); }}
-                    className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
-                  >
-                    😰 Help, I'm overwhelmed
-                  </button>
-                  <button
-                    onClick={() => { setChatInput('Draft an hour-by-hour planner with rest stops for today.'); }}
-                    className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
-                  >
-                    📅 Build schedule
-                  </button>
-                </div>
-
-                <form onSubmit={handleSendMessage} className="flex gap-3 items-center">
-                  <textarea
-                    rows={1}
-                    value={chatInput}
-                    onChange={e => setChatInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
-                    placeholder="Ask your AI agent to organize, breakdown, or plan your tasks..."
-                    className="flex-1 bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] px-4 py-3 rounded-lg text-sm outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all resize-none max-h-24"
-                  />
-                  <button
-                    type="button"
-                    onClick={toggleListening}
-                    disabled={!speechSupported}
-                    title={
-                      !speechSupported 
-                        ? "Web Speech API is not supported in your browser" 
-                        : isListening 
-                          ? "Listening... Click to stop" 
-                          : "Dictate with voice input"
-                    }
-                    className={`w-11 h-11 rounded-lg flex items-center justify-center transition-all border flex-shrink-0 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
-                      isListening
-                        ? 'bg-[#FF4F4F] hover:bg-[#E03D3D] border-[#FF4F4F] text-[#E8F4FD] animate-pulse shadow-md'
-                        : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#4FFFB0]'
-                    }`}
-                  >
-                    {isListening ? (
-                      <MicOff className="w-5 h-5 animate-pulse" />
-                    ) : (
-                      <Mic className="w-5 h-5" />
-                    )}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!chatInput.trim() || isLoading}
-                    className="w-11 h-11 rounded-lg bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] flex items-center justify-center font-bold transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
-                  >
-                    <Send className="w-5 h-5" />
-                  </button>
-                </form>
-              </div>
+              <ChatPanel
+                chatMessages={chatMessages}
+                chatInput={chatInput}
+                setChatInput={setChatInput}
+                isLoading={isLoading}
+                isListening={isListening}
+                speechSupported={speechSupported}
+                toggleListening={toggleListening}
+                handleSendMessage={handleSendMessage}
+                handleClearChat={handleClearChat}
+              />
             </div>
 
             {/* 2. SCHEDULE PLANNER VIEW */}
-            <div className={`flex-1 overflow-y-auto p-6 ${activeTab === 'schedule' ? 'block' : 'hidden'} custom-scrollbar`}>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-base font-bold text-[#E8F4FD] font-syne flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-[#7B61FF]" /> Chronological Daily Schedule
-                  </h2>
-                  <p className="text-xs text-[#6B8CAE] mt-0.5">Custom hour-by-hour pipeline generated dynamically by AI based on your tasks</p>
-                </div>
-                <button
-                  onClick={handlePlanDay}
-                  className="bg-white/[0.04] hover:bg-white/[0.08] text-[#4FFFB0] hover:text-[#3DEBA0] border border-white/10 text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '3s' }} /> Regenerate Schedule
-                </button>
-              </div>
-
-              {scheduleData ? (
-                <div className="flex flex-col gap-6">
-                  {scheduleData.advice && (
-                    <div className="bg-white/[0.03] backdrop-blur-md border border-white/10 p-4 rounded-xl flex gap-3 items-start leading-relaxed text-sm">
-                      <Brain className="w-5 h-5 text-[#4FFFB0] flex-shrink-0 mt-0.5" />
-                      <div>
-                        <strong className="text-[#4FFFB0] block mb-0.5 font-syne text-xs uppercase tracking-wider">AI Strategist Advice</strong>
-                        <p className="text-xs text-[#E8F4FD]/90">{scheduleData.advice}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {scheduleData.days?.map((day, dIdx) => (
-                    <div key={dIdx} className="bg-white/[0.02] backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-md">
-                      <div className="bg-white/[0.04] border-b border-white/10 px-4 py-3 font-syne font-bold text-xs uppercase tracking-wider text-[#4FFFB0]">
-                        {day.label}
-                      </div>
-                      
-                      <div className="divide-y divide-white/5">
-                        {day.slots?.map((slot, sIdx) => {
-                          const isBreak = slot.task.toLowerCase().includes('break') || slot.task.toLowerCase().includes('lunch') || slot.task.toLowerCase().includes('recharge');
-                          return (
-                            <div key={sIdx} className="p-4 flex items-start gap-4 transition-colors hover:bg-white/[0.03]">
-                              <div className="w-20 flex-shrink-0">
-                                <span className="text-xs font-semibold text-[#4FFFB0] font-mono">{slot.time}</span>
-                                <span className="block text-[10px] text-[#6B8CAE] mt-0.5 font-mono">{slot.duration}</span>
-                              </div>
-                              <div className={`w-1 self-stretch rounded-full ${isBreak ? 'bg-[#6B8CAE]/40' : 'bg-[#7B61FF]'}`} />
-                              <div className="flex-1">
-                                <h4 className={`text-sm font-bold ${isBreak ? 'text-[#6B8CAE]' : 'text-[#E8F4FD]'}`}>{slot.task}</h4>
-                                <p className="text-xs text-[#6B8CAE] mt-0.5 leading-relaxed">{slot.desc}</p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-                  <span className="text-4xl mb-4">📅</span>
-                  <p className="text-sm font-semibold text-[#E8F4FD] font-syne">No Schedule Prepared Yet</p>
-                  <p className="text-xs text-[#6B8CAE] mt-1 max-w-sm">
-                    Click \"Plan Day\" to parse your custom task stack and construct an optimized, high-performance hourly schedule.
-                  </p>
-                  <button
-                    onClick={handlePlanDay}
-                    className="mt-4 bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] text-xs font-bold py-2 px-5 rounded-lg transition-all cursor-pointer"
-                  >
-                    Build My Plan
-                  </button>
-                </div>
-              )}
+            <div className={`flex-1 overflow-hidden ${activeTab === 'schedule' ? 'flex' : 'hidden'}`}>
+              <SchedulePanel
+                scheduleData={scheduleData}
+                handlePlanDay={handlePlanDay}
+              />
             </div>
 
             {/* 3. INSIGHTS VIEW */}
-            <div className={`flex-1 overflow-y-auto p-6 ${activeTab === 'insights' ? 'block' : 'hidden'} custom-scrollbar`}>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-base font-bold text-[#E8F4FD] font-syne flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-[#FF5F5F]" /> Deep Workload Insights
-                  </h2>
-                  <p className="text-xs text-[#6B8CAE] mt-0.5">Strategic analytics, cognitive load forecasts, and priority suggestions</p>
-                </div>
-                <button
-                  onClick={handleFullAnalysis}
-                  className="bg-white/[0.04] hover:bg-white/[0.08] text-[#4FFFB0] hover:text-[#3DEBA0] border border-white/10 text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" /> Re-Analyze Workload
-                </button>
-              </div>
-
-              {insights.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {insights.map((ins, idx) => (
-                    <div key={idx} className="bg-white/[0.02] backdrop-blur-md border border-white/10 rounded-xl p-5 shadow-sm transition-all hover:border-[#4FFFB0]/30 flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-2xl">{ins.icon}</span>
-                        <span className="text-[10px] font-bold text-[#6B8CAE] uppercase tracking-wider font-mono">Insight #{idx + 1}</span>
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold text-[#E8F4FD] font-syne mb-1">{ins.title}</h3>
-                        <p className="text-xs text-[#6B8CAE] leading-relaxed">{ins.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-                  <span className="text-4xl mb-4">💡</span>
-                  <p className="text-sm font-semibold text-[#E8F4FD] font-syne">Workload Analysis Unprepared</p>
-                  <p className="text-xs text-[#6B8CAE] mt-1 max-w-sm">
-                    Click below to trigger a full analytical check on your tasks and deadlines. Let the AI diagnose bottlenecks.
-                  </p>
-                  <button
-                    onClick={handleFullAnalysis}
-                    className="mt-4 bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] text-xs font-bold py-2 px-5 rounded-lg transition-all cursor-pointer"
-                  >
-                    Run Full Diagnostics
-                  </button>
-                </div>
-              )}
+            <div className={`flex-1 overflow-hidden ${activeTab === 'insights' ? 'flex' : 'hidden'}`}>
+              <InsightsPanel
+                insights={insights}
+                handleFullAnalysis={handleFullAnalysis}
+              />
             </div>
 
           </div>
@@ -1903,322 +1194,29 @@ Here are some helpful recommended actions:
 
       </div>
 
-      {/* Fully Interactive Liquid Glass Pop-Up for Task Focus */}
+      {/* Focus Detailed Glass Modal Popup */}
       {focusedTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
-          {/* Liquid backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/50 backdrop-blur-md"
-            onClick={() => setFocusedTask(null)}
-          />
-          
-          {/* Glass popup card */}
-          <div className="relative w-full max-w-lg bg-[#0D1B2E]/85 backdrop-blur-2xl border border-white/10 rounded-2xl p-6 shadow-2xl shadow-black/80 flex flex-col gap-4 overflow-hidden animate-zoom-in">
-            {/* Liquid aesthetic lighting decoration */}
-            <div className="absolute -top-12 -right-12 w-24 h-24 rounded-full bg-[#4FFFB0]/20 blur-xl pointer-events-none" />
-            <div className="absolute -bottom-12 -left-12 w-24 h-24 rounded-full bg-[#7B61FF]/20 blur-xl pointer-events-none" />
-
-            <div className="flex items-start justify-between gap-4 relative z-10">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: getCategoryTheme(focusedTask.category).bg, color: getCategoryTheme(focusedTask.category).text }}>
-                    {getCategoryTheme(focusedTask.category).icon} {getCategoryTheme(focusedTask.category).label}
-                  </span>
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                    focusedTask.priority === 'high' ? 'bg-[#FF5F5F]/15 text-[#FF5F5F]' : focusedTask.priority === 'medium' ? 'bg-[#FFD166]/15 text-[#FFD166]' : 'bg-[#4FFFB0]/15 text-[#4FFFB0]'
-                  }`}>
-                    {focusedTask.priority.toUpperCase()}
-                  </span>
-                </div>
-                <h3 className="text-lg font-bold text-[#E8F4FD] font-syne tracking-tight leading-snug">
-                  {focusedTask.title}
-                </h3>
-              </div>
-              <button 
-                type="button"
-                onClick={() => setFocusedTask(null)}
-                className="text-[#6B8CAE] hover:text-[#E8F4FD] p-1.5 hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 relative z-10 max-h-[60vh] overflow-y-auto pr-1 custom-scrollbar">
-              {focusedTask.description && (
-                <div className="bg-[#112236]/40 border border-white/5 p-3 rounded-xl text-xs text-[#A0C0E0] leading-relaxed">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE] mb-1">Description</h4>
-                  {focusedTask.description}
-                </div>
-              )}
-
-              {/* Dynamic Urgency / Deadline detail */}
-              <div className="flex items-center justify-between bg-[#112236]/30 border border-white/5 p-3 rounded-xl">
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">Deadline Target</span>
-                  <span className="text-xs text-[#E8F4FD] font-semibold font-mono mt-0.5">
-                    {new Date(focusedTask.deadline).toLocaleDateString('en-IN', {
-                      weekday: 'long',
-                      day: 'numeric',
-                      month: 'short',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-right text-[#4FFFB0]">
-                    {getUrgencyDetails(focusedTask.deadline).emoji} {getUrgencyDetails(focusedTask.deadline).label}
-                  </span>
-                </div>
-              </div>
-
-              {/* Subtasks checklist inside popup */}
-              <div className="space-y-2 bg-[#112236]/20 border border-white/5 p-4 rounded-xl">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE]">
-                    Interactive Steps ({focusedTask.subtasks?.filter(s => s.completed).length || 0}/{focusedTask.subtasks?.length || 0})
-                  </h4>
-                  {focusedTask.subtasks?.length > 0 && (
-                    <span className="text-xs text-[#4FFFB0] font-mono font-bold">
-                      {Math.round(((focusedTask.subtasks?.filter(s => s.completed).length || 0) / focusedTask.subtasks?.length) * 100)}%
-                    </span>
-                  )}
-                </div>
-
-                {focusedTask.subtasks && focusedTask.subtasks.length > 0 ? (
-                  <div className="flex flex-col gap-2">
-                    {focusedTask.subtasks.map(s => (
-                      <div
-                        key={s.id}
-                        onClick={(e) => {
-                          handleToggleSubtask(focusedTask.id, s.id, e);
-                          // Update focused task subtask state instantly
-                          setFocusedTask(prev => {
-                            if (!prev) return null;
-                            return {
-                              ...prev,
-                              subtasks: prev.subtasks.map(sub => sub.id === s.id ? { ...sub, completed: !sub.completed } : sub)
-                            };
-                          });
-                        }}
-                        className="flex items-center gap-3 text-xs text-[#E8F4FD] hover:text-[#4FFFB0] bg-white/[0.02] hover:bg-[#1E3355]/30 border border-white/5 px-3 py-2 rounded-lg transition-all cursor-pointer group"
-                      >
-                        {s.completed ? (
-                          <CheckCircle2 className="w-4 h-4 text-[#4FFFB0] flex-shrink-0" />
-                        ) : (
-                          <Circle className="w-4 h-4 text-[#6B8CAE] group-hover:text-[#4FFFB0] flex-shrink-0" />
-                        )}
-                        <span className={`flex-1 ${s.completed ? 'line-through text-[#6B8CAE]' : ''}`}>
-                          {s.title}
-                        </span>
-                        <span className="text-[10px] text-[#6B8CAE] font-mono">{s.duration}m</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-4 text-center">
-                    <p className="text-xs text-[#6B8CAE]">No checklist steps generated yet.</p>
-                    {!focusedTask.completed && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          handleBreakdownTask(focusedTask, e);
-                          setFocusedTask(null); // Close to show chat breakdown progress
-                        }}
-                        className="mt-2 bg-[#4FFFB0]/15 hover:bg-[#4FFFB0]/30 text-[#4FFFB0] border border-[#4FFFB0]/30 text-[11px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
-                      >
-                        <Bot className="w-3.5 h-3.5" /> Deconstruct Task with AI
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Task Properties Editor Form within the focus pop up */}
-              <div className="border-t border-white/5 pt-4 space-y-3">
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE]">Quick Modifiers</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[9px] text-[#6B8CAE] uppercase font-bold">Priority</label>
-                    <select
-                      value={focusedTask.priority}
-                      onChange={e => {
-                        const newPri = e.target.value as any;
-                        setTasks(prev => prev.map(t => t.id === focusedTask.id ? { ...t, priority: newPri } : t));
-                        setFocusedTask(prev => prev ? { ...prev, priority: newPri } : null);
-                      }}
-                      className="w-full bg-[#112236] border border-white/10 text-xs text-[#E8F4FD] p-2 rounded-lg outline-none focus:border-[#4FFFB0] transition-colors"
-                    >
-                      <option value="low">Low Priority</option>
-                      <option value="medium">Medium Priority</option>
-                      <option value="high">High Priority</option>
-                    </select>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[9px] text-[#6B8CAE] uppercase font-bold">Category</label>
-                    <select
-                      value={focusedTask.category}
-                      onChange={e => {
-                        const newCat = e.target.value;
-                        setTasks(prev => prev.map(t => t.id === focusedTask.id ? { ...t, category: newCat } : t));
-                        setFocusedTask(prev => prev ? { ...prev, category: newCat } : null);
-                      }}
-                      className="w-full bg-[#112236] border border-white/10 text-xs text-[#E8F4FD] p-2 rounded-lg outline-none focus:border-[#4FFFB0] transition-colors"
-                    >
-                      <option value="work">💼 Work</option>
-                      <option value="study">📚 Study</option>
-                      <option value="personal">🏠 Personal</option>
-                      <option value="health">💪 Health</option>
-                      <option value="finance">💰 Finance</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Footer row */}
-            <div className="flex items-center justify-between border-t border-white/5 pt-4 relative z-10 flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={(e) => {
-                  handleToggleTask(focusedTask.id, e);
-                  setFocusedTask(prev => prev ? { ...prev, completed: !prev.completed } : null);
-                }}
-                className="bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-[#E8F4FD] px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                {focusedTask.completed ? <RotateCcw className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5 text-[#4FFFB0]" />}
-                {focusedTask.completed ? 'Mark Pending' : 'Mark Completed'}
-              </button>
-
-              <button
-                type="button"
-                onClick={(e) => {
-                  handleDeleteTask(focusedTask.id, e);
-                  setFocusedTask(null);
-                }}
-                className="bg-[#FF5F5F]/10 hover:bg-[#FF5F5F]/20 border border-[#FF5F5F]/20 text-xs text-[#FF5F5F] px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" /> Delete Task
-              </button>
-            </div>
-          </div>
-        </div>
+        <TaskModal
+          focusedTask={focusedTask}
+          setFocusedTask={setFocusedTask}
+          setTasks={setTasks}
+          handleToggleSubtask={handleToggleSubtask}
+          handleBreakdownTask={handleBreakdownTask}
+          handleToggleTask={handleToggleTask}
+          handleDeleteTask={handleDeleteTask}
+        />
       )}
 
-      {/* ⚠️ Unfinished / Pending Tasks Alert Dialog Popup */}
+      {/* Unfinished / Pending Tasks Alert Dialog Popup */}
       {showUnfinishedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
-          {/* Backdrop overlay */}
-          <div 
-            className="absolute inset-0 bg-black/65 backdrop-blur-md"
-            onClick={() => setShowUnfinishedModal(false)}
-          />
-          
-          {/* Main glass dialogue card */}
-          <div className="relative w-full max-w-md bg-[#0D1B2E]/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-6 shadow-2xl shadow-black/80 flex flex-col gap-4 overflow-hidden animate-zoom-in">
-            {/* Minimal decoration */}
-            <div className="absolute -top-12 -right-12 w-24 h-24 rounded-full bg-[#FF5F5F]/15 blur-xl pointer-events-none" />
-            <div className="absolute -bottom-12 -left-12 w-24 h-24 rounded-full bg-[#FFD166]/10 blur-xl pointer-events-none" />
-
-            <div className="flex items-start justify-between gap-4 relative z-10">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-[#FF5F5F]/10 flex items-center justify-center border border-[#FF5F5F]/20">
-                  <Flame className="w-4 h-4 text-[#FF5F5F]" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-[#E8F4FD] font-syne uppercase tracking-wider">
-                    Unfinished Tasks Warning
-                  </h3>
-                  <p className="text-[11px] text-[#6B8CAE]">
-                    You have <span className="font-bold text-[#FF5F5F]">{tasks.filter(t => !t.completed).length} pending tasks</span> requiring focus!
-                  </p>
-                </div>
-              </div>
-              <button 
-                type="button"
-                onClick={() => setShowUnfinishedModal(false)}
-                className="text-[#6B8CAE] hover:text-[#E8F4FD] p-1.5 hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* List of unfinished tasks in popup */}
-            <div className="space-y-2 relative z-10 max-h-[45vh] overflow-y-auto pr-1 custom-scrollbar">
-              {tasks.filter(t => !t.completed).map(task => {
-                const urg = getUrgencyDetails(task.deadline);
-                return (
-                  <div 
-                    key={task.id}
-                    onClick={() => {
-                      setShowUnfinishedModal(false);
-                      selectTaskDirectly(task.id);
-                    }}
-                    className="group bg-[#112236]/40 hover:bg-[#112236]/70 border border-white/5 hover:border-white/10 p-3 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all duration-150"
-                  >
-                    <div className="flex flex-col gap-1 flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-[#E8F4FD] group-hover:text-[#4FFFB0] truncate transition-colors">
-                        {task.title}
-                      </h4>
-                      <div className="flex items-center gap-2 text-[10px] text-[#6B8CAE]">
-                        <span className="font-semibold font-mono" style={{ color: urg.color }}>
-                          {urg.emoji} {urg.label}
-                        </span>
-                        <span>•</span>
-                        <span>{task.estimatedDuration} mins</span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleTask(task.id, e);
-                      }}
-                      className="w-6 h-6 rounded-md bg-[#4FFFB0]/10 hover:bg-[#4FFFB0]/20 border border-[#4FFFB0]/20 hover:border-[#4FFFB0]/40 flex items-center justify-center text-[#4FFFB0] transition-colors cursor-pointer"
-                      title="Quick Mark Completed"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Footer triggers */}
-            <div className="flex gap-2.5 relative z-10 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowUnfinishedModal(false);
-                  handlePlanDay();
-                }}
-                className="flex-1 bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] text-xs font-bold py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <Calendar className="w-3.5 h-3.5" /> Plan Schedule
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowUnfinishedModal(false)}
-                className="px-4 bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-[#E8F4FD] rounded-xl transition-colors cursor-pointer"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </div>
+        <UnfinishedModal
+          tasks={currentTasks}
+          setShowUnfinishedModal={setShowUnfinishedModal}
+          selectTaskDirectly={selectTaskDirectly}
+          handleToggleTask={handleToggleTask}
+          handlePlanDay={handlePlanDay}
+        />
       )}
     </div>
   );
-
-  // Helper to select a task card and view/request direct agent updates
-  function selectTaskDirectly(id: string) {
-    setSelectedTaskId(id);
-    const task = tasks.find(t => t.id === id);
-    if (task) {
-      setFocusedTask(task);
-      setMobileSidebarOpen(false);
-      analyzeTaskDirectly(task);
-    }
-  }
 }
