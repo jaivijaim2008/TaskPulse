@@ -29,7 +29,9 @@ import {
   Search,
   X,
   Menu,
-  Download
+  Download,
+  Pencil,
+  Save
 } from 'lucide-react';
 
 // ============ INTERACTION FEEDBACK UTILITIES ============
@@ -117,6 +119,12 @@ export default function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [focusedTask, setFocusedTask] = useState<Task | null>(null);
   const [showUnfinishedModal, setShowUnfinishedModal] = useState(false);
+  const [sortBy, setSortBy] = useState<'auto' | 'custom'>('auto');
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+  const [inlineEditingTaskId, setInlineEditingTaskId] = useState<string | null>(null);
+  const [quickEditTitle, setQuickEditTitle] = useState('');
+  const [quickEditPriority, setQuickEditPriority] = useState<'low' | 'medium' | 'high'>('medium');
 
   // AI & Chat States
   const [activeTab, setActiveTab] = useState<'chat' | 'schedule' | 'insights'>('chat');
@@ -207,7 +215,7 @@ export default function App() {
       const d2 = new Date(now); d2.setDate(d2.getDate() + 1);
       const d3 = new Date(now); d3.setDate(d3.getDate() + 3);
 
-      const defaultTasks: Task[] = [
+       const defaultTasks: Task[] = [
         {
           id: '1',
           title: 'Deploy Cloud Run Application',
@@ -222,7 +230,8 @@ export default function App() {
             { id: 'sub-1-2', title: 'Configure environment variables', completed: false, duration: 15 },
             { id: 'sub-1-3', title: 'Run deploy script', completed: false, duration: 30 }
           ],
-          createdAt: now.toISOString()
+          createdAt: now.toISOString(),
+          position: 0
         },
         {
           id: '2',
@@ -234,7 +243,8 @@ export default function App() {
           completed: false,
           estimatedDuration: 45,
           subtasks: [],
-          createdAt: now.toISOString()
+          createdAt: now.toISOString(),
+          position: 1
         },
         {
           id: '3',
@@ -246,7 +256,8 @@ export default function App() {
           completed: false,
           estimatedDuration: 90,
           subtasks: [],
-          createdAt: now.toISOString()
+          createdAt: now.toISOString(),
+          position: 2
         }
       ];
       setTasks(defaultTasks);
@@ -353,10 +364,14 @@ What would you like to accomplish first?`,
       completed: false,
       estimatedDuration: taskDuration,
       subtasks: [],
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      position: 0
     };
 
-    const updated = [newTask, ...tasks];
+    const updated = [
+      newTask,
+      ...tasks.map((t, idx) => ({ ...t, position: t.position !== undefined ? t.position + 1 : idx + 1 }))
+    ];
     setTasks(updated);
     localStorage.setItem('tp_tasks', JSON.stringify(updated));
 
@@ -417,6 +432,109 @@ What would you like to accomplish first?`,
     });
     setTasks(updated);
     localStorage.setItem('tp_tasks', JSON.stringify(updated));
+  };
+
+  // ============ QUICK INLINE EDIT HANDLERS ============
+  const handleStartQuickEdit = (e: React.MouseEvent | React.FormEvent, task: Task) => {
+    e.stopPropagation();
+    setInlineEditingTaskId(task.id);
+    setQuickEditTitle(task.title);
+    setQuickEditPriority(task.priority);
+  };
+
+  const handleSaveQuickEdit = (e: React.MouseEvent | React.FormEvent, taskId: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!quickEditTitle.trim()) return;
+
+    const updated = tasks.map(t => {
+      if (t.id === taskId) {
+        return {
+          ...t,
+          title: quickEditTitle.trim(),
+          priority: quickEditPriority
+        };
+      }
+      return t;
+    });
+
+    setTasks(updated);
+    localStorage.setItem('tp_tasks', JSON.stringify(updated));
+    setInlineEditingTaskId(null);
+
+    if (focusedTask && focusedTask.id === taskId) {
+      setFocusedTask(prev => prev ? { ...prev, title: quickEditTitle.trim(), priority: quickEditPriority } : null);
+    }
+
+    playBreakdownSound();
+    triggerVibration();
+  };
+
+  const handleCancelQuickEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setInlineEditingTaskId(null);
+  };
+
+  // ============ DRAG AND DROP HANDLERS ============
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggingTaskId(id);
+    e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (draggingTaskId && draggingTaskId !== id) {
+      setDragOverTaskId(id);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    const sourceId = e.dataTransfer.getData('text/plain') || draggingTaskId;
+    
+    if (!sourceId || sourceId === targetId) {
+      setDraggingTaskId(null);
+      setDragOverTaskId(null);
+      return;
+    }
+
+    setSortBy('custom');
+
+    const reorderedTasks = [...tasks];
+    
+    reorderedTasks.forEach((t, index) => {
+      if (t.position === undefined) {
+        t.position = index;
+      }
+    });
+
+    const sourceIndex = reorderedTasks.findIndex(t => t.id === sourceId);
+    const targetIndex = reorderedTasks.findIndex(t => t.id === targetId);
+
+    if (sourceIndex !== -1 && targetIndex !== -1) {
+      const [movedTask] = reorderedTasks.splice(sourceIndex, 1);
+      reorderedTasks.splice(targetIndex, 0, movedTask);
+      
+      const updatedTasks = reorderedTasks.map((t, index) => ({
+        ...t,
+        position: index
+      }));
+
+      setTasks(updatedTasks);
+      localStorage.setItem('tp_tasks', JSON.stringify(updatedTasks));
+      
+      playBreakdownSound();
+      triggerVibration();
+    }
+
+    setDraggingTaskId(null);
+    setDragOverTaskId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggingTaskId(null);
+    setDragOverTaskId(null);
   };
 
   // ============ DYNAMIC URGENCY CALCULATION ============
@@ -1083,6 +1201,37 @@ Here are some helpful recommended actions:
             </div>
           </div>
 
+          {/* Sorting & Custom Workflow Preferences Selector */}
+          <div className="px-5 py-2 border-b border-white/5 bg-white/[0.01] flex items-center justify-between text-xs flex-shrink-0">
+            <span className="text-[#6B8CAE] font-medium font-syne text-[10px] uppercase tracking-wider">Priority workflow</span>
+            <div className="flex bg-white/[0.03] border border-white/10 p-0.5 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setSortBy('auto')}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                  sortBy === 'auto'
+                    ? 'bg-[#4FFFB0] text-[#050B1A] shadow-sm'
+                    : 'text-[#6B8CAE] hover:text-[#E8F4FD]'
+                }`}
+                title="Sort automatically by status and deadline urgency"
+              >
+                ⚡ Auto
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortBy('custom')}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                  sortBy === 'custom'
+                    ? 'bg-[#4FFFB0] text-[#050B1A] shadow-sm'
+                    : 'text-[#6B8CAE] hover:text-[#E8F4FD]'
+                }`}
+                title="Custom order. Drag and drop tasks in any sequence"
+              >
+                ↕️ Custom
+              </button>
+            </div>
+          </div>
+
           {/* Scrollable Task List */}
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar">
             {tasks.length === 0 ? (
@@ -1106,6 +1255,11 @@ Here are some helpful recommended actions:
                   (t.description || '').toLowerCase().includes(searchQuery.toLowerCase())
                 )
                 .sort((a, b) => {
+                  if (sortBy === 'custom') {
+                    const posA = a.position !== undefined ? a.position : 9999;
+                    const posB = b.position !== undefined ? b.position : 9999;
+                    return posA - posB;
+                  }
                   if (a.completed !== b.completed) return a.completed ? 1 : -1;
                   return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
                 })
@@ -1119,6 +1273,14 @@ Here are some helpful recommended actions:
                     hour: '2-digit',
                     minute: '2-digit'
                   });
+
+                  // Check if the deadline is within the next 2 hours (and task is not completed)
+                  const isWithinTwoHours = !task.completed && (() => {
+                    const deadlineTime = new Date(task.deadline).getTime();
+                    const nowTime = new Date().getTime();
+                    const diffMs = deadlineTime - nowTime;
+                    return diffMs > 0 && diffMs <= 2 * 60 * 60 * 1000;
+                  })();
 
                   // Calculate remaining time in the day
                   const now = new Date();
@@ -1135,9 +1297,20 @@ Here are some helpful recommended actions:
                   return (
                     <div
                       key={task.id}
-                      onClick={() => selectTaskDirectly(task.id)}
-                      className={`relative bg-white/[0.02] backdrop-blur-md border rounded-xl p-4 cursor-pointer transition-all duration-200 group flex flex-col gap-3 hover:translate-x-0.5 ${
-                        task.completed ? 'border-white/5 opacity-50 bg-white/[0.005]' : isSelected ? 'border-[#4FFFB0]/80 bg-white/[0.06] shadow-md shadow-black/20' : 'border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
+                      onClick={() => inlineEditingTaskId !== task.id && selectTaskDirectly(task.id)}
+                      draggable={inlineEditingTaskId !== task.id}
+                      onDragStart={(e) => handleDragStart(e, task.id)}
+                      onDragOver={(e) => handleDragOver(e, task.id)}
+                      onDrop={(e) => handleDrop(e, task.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`relative bg-white/[0.02] backdrop-blur-md border rounded-xl p-4 transition-all duration-300 group flex flex-col gap-3 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/30 hover:border-white/20 select-none ${
+                        inlineEditingTaskId === task.id ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
+                      } ${
+                        task.completed ? 'border-white/5 opacity-50 bg-white/[0.005]' : isSelected ? 'border-[#4FFFB0]/80 bg-white/[0.06] shadow-md shadow-black/20' : 'border-white/10 hover:bg-white/[0.04]'
+                      } ${
+                        draggingTaskId === task.id ? 'opacity-40 border-dashed border-[#4FFFB0]/40 scale-95' : ''
+                      } ${
+                        dragOverTaskId === task.id ? 'border-t-2 border-t-[#4FFFB0]/80 bg-white/[0.06]' : ''
                       }`}
                     >
                       {/* Accent strip */}
@@ -1146,112 +1319,200 @@ Here are some helpful recommended actions:
                         style={{ backgroundColor: task.completed ? '#6B8CAE' : urg.color }}
                       />
 
-                      {/* Header row */}
-                      <div className="flex items-start justify-between gap-2 pl-1.5">
-                        <div className="flex flex-col gap-1.5 flex-1">
-                          <h3 className={`text-sm font-bold tracking-tight leading-snug group-hover:text-[#4FFFB0] transition-colors ${task.completed ? 'line-through text-[#6B8CAE]' : 'text-[#E8F4FD]'}`}>
-                            {task.title}
-                          </h3>
-
-                          {/* Est. Duration vs Day Remaining Progress Bar */}
-                          <div className="flex flex-col gap-1 mt-0.5">
-                            <div className="w-full bg-white/[0.08] rounded-full h-1 overflow-hidden border border-white/5 relative" title={`${task.estimatedDuration}m is ${durationPercent}% of remaining day (${formattedRemaining} left)`}>
-                              <div 
-                                className={`h-full rounded-full transition-all duration-500 ${task.completed ? 'bg-[#6B8CAE]/50' : 'bg-gradient-to-r from-[#4FFFB0] to-[#3B82F6]'}`}
-                                style={{ width: `${durationPercent}%` }}
-                              />
-                            </div>
-                            <div className="flex items-center justify-between text-[9px] text-[#6B8CAE] font-mono leading-none">
-                              <span>Est: <strong className={task.completed ? 'text-[#6B8CAE]' : 'text-[#4FFFB0]'}>{task.estimatedDuration}m</strong></span>
-                              <span>{formattedRemaining} left today ({durationPercent}%)</span>
-                            </div>
-                          </div>
-
-                          {task.description && (
-                            <p className="text-[11px] text-[#6B8CAE] line-clamp-2 leading-relaxed mt-0.5">
-                              {task.description}
-                            </p>
-                          )}
-                        </div>
-                        {renderUrgencyCircle(urg.pct, urg.color, urg.label, task.completed)}
-                      </div>
-
-                      {/* Interactive Subtasks list (Rich feature block) */}
-                      {task.subtasks && task.subtasks.length > 0 && (
-                        <div className="pl-1.5 border-l border-white/10 ml-2 py-1 flex flex-col gap-2 bg-white/[0.03] border border-white/5 p-2 rounded-lg">
-                          <div className="text-[10px] font-bold text-[#6B8CAE] uppercase tracking-wider mb-1 flex items-center justify-between">
-                            <span>Steps ({task.subtasks.filter(s => s.completed).length}/{task.subtasks.length})</span>
-                            <span className="text-xs text-[#4FFFB0] font-mono">{Math.round((task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100)}%</span>
-                          </div>
-                          {task.subtasks.map(s => (
-                            <div
-                              key={s.id}
-                              onClick={(e) => handleToggleSubtask(task.id, s.id, e)}
-                              className="flex items-center gap-2 text-[11px] text-[#E8F4FD] hover:text-[#4FFFB0] transition-colors py-0.5 cursor-pointer"
-                            >
-                              {s.completed ? (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-[#4FFFB0] flex-shrink-0" />
-                              ) : (
-                                <Circle className="w-3.5 h-3.5 text-[#6B8CAE] group-hover:text-[#4FFFB0] flex-shrink-0" />
-                              )}
-                              <span className={s.completed ? 'line-through text-[#6B8CAE]' : ''}>
-                                {s.title} <span className="text-[#6B8CAE] font-mono text-[9px]">({s.duration}m)</span>
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+                      {/* Quick Edit icon overlay revealed on hover */}
+                      {!task.completed && inlineEditingTaskId !== task.id && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleStartQuickEdit(e, task)}
+                          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 hover:bg-[#4FFFB0] hover:text-[#050B1A] text-[#E8F4FD] p-1.5 rounded-lg border border-white/10 hover:border-[#4FFFB0]/30 shadow-md cursor-pointer z-10"
+                          title="Quick Edit Task"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
                       )}
 
-                      {/* Metadata row */}
-                      <div className="flex items-center justify-between gap-1 pl-1.5 flex-wrap">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 font-syne"
-                            style={{ backgroundColor: catTheme.bg, color: catTheme.text }}
-                          >
-                            {catTheme.icon}
-                            {catTheme.label}
-                          </span>
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                            task.priority === 'high' ? 'bg-[#FF5F5F]/15 text-[#FF5F5F]' : task.priority === 'medium' ? 'bg-[#FFD166]/15 text-[#FFD166]' : 'bg-[#4FFFB0]/15 text-[#4FFFB0]'
-                          }`}>
-                            {task.priority.toUpperCase()}
-                          </span>
-                        </div>
-                        <span className="text-[10px] text-[#6B8CAE] font-mono flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> {formatTime}
-                        </span>
-                      </div>
-
-                      {/* Action buttons */}
-                      <div className="flex items-center justify-between pt-2 border-t border-white/10 pl-1.5 mt-1">
-                        <button
-                          onClick={(e) => handleToggleTask(task.id, e)}
-                          className="text-xs text-[#6B8CAE] hover:text-[#4FFFB0] transition-colors flex items-center gap-1 bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 px-2.5 py-1 rounded-md cursor-pointer"
+                      {inlineEditingTaskId === task.id ? (
+                        <form
+                          onSubmit={(e) => handleSaveQuickEdit(e, task.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex flex-col gap-3 py-1 pl-1.5"
                         >
-                          {task.completed ? <RotateCcw className="w-3 h-3" /> : <Check className="w-3 h-3 text-[#4FFFB0]" />}
-                          {task.completed ? 'Undo' : 'Complete'}
-                        </button>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE] font-syne">
+                              Quick Edit Title
+                            </label>
+                            <input
+                              type="text"
+                              value={quickEditTitle}
+                              onChange={(e) => setQuickEditTitle(e.target.value)}
+                              className="w-full bg-[#050B1A]/80 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-[#E8F4FD] focus:outline-none focus:border-[#4FFFB0] transition-colors"
+                              placeholder="Task title..."
+                              autoFocus
+                              required
+                            />
+                          </div>
 
-                        <div className="flex items-center gap-2">
-                          {!task.completed && task.subtasks.length === 0 && (
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE] font-syne">
+                              Priority Level
+                            </label>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {(['low', 'medium', 'high'] as const).map((pri) => (
+                                <button
+                                  key={pri}
+                                  type="button"
+                                  onClick={() => setQuickEditPriority(pri)}
+                                  className={`py-1 text-[10px] font-bold uppercase tracking-wider rounded border transition-all cursor-pointer ${
+                                    quickEditPriority === pri
+                                      ? pri === 'high'
+                                        ? 'bg-[#FF5F5F]/20 text-[#FF5F5F] border-[#FF5F5F]/40 font-bold'
+                                        : pri === 'medium'
+                                        ? 'bg-[#FFD166]/20 text-[#FFD166] border-[#FFD166]/40 font-bold'
+                                        : 'bg-[#4FFFB0]/20 text-[#4FFFB0] border-[#4FFFB0]/40 font-bold'
+                                      : 'bg-white/[0.02] text-[#6B8CAE] border-white/5 hover:border-white/10 hover:text-[#E8F4FD]'
+                                  }`}
+                                >
+                                  {pri}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 mt-1 pt-2 border-t border-white/5">
                             <button
-                              onClick={(e) => handleBreakdownTask(task, e)}
-                              className="text-[11px] text-[#4FFFB0] hover:text-[#3DEBA0] transition-colors flex items-center gap-1 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 px-2 py-1 rounded-md cursor-pointer"
-                              title="Use TaskPulse's local cognitive engine to break this task down into bite-sized actionable checklists"
+                              type="button"
+                              onClick={handleCancelQuickEdit}
+                              className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE] hover:text-[#E8F4FD] px-2.5 py-1.5 rounded bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] cursor-pointer"
                             >
-                              <Bot className="w-3 h-3" /> Break down
+                              Cancel
                             </button>
+                            <button
+                              type="submit"
+                              className="text-[10px] font-bold uppercase tracking-wider bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] px-3 py-1.5 rounded flex items-center gap-1 shadow-md shadow-black/20 cursor-pointer font-bold"
+                            >
+                              <Save className="w-3 h-3" /> Save
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <>
+                          {/* Header row */}
+                          <div className="flex items-start justify-between gap-2 pl-1.5">
+                            <div className="flex flex-col gap-1.5 flex-1">
+                              <h3 className={`text-sm font-bold tracking-tight leading-snug group-hover:text-[#4FFFB0] transition-colors flex items-center flex-wrap gap-1.5 ${task.completed ? 'line-through text-[#6B8CAE]' : 'text-[#E8F4FD]'}`}>
+                                {isWithinTwoHours && (
+                                  <span className="inline-flex items-center gap-1 bg-[#FF5F5F]/15 text-[#FF5F5F] text-[9px] font-bold px-1.5 py-0.5 rounded border border-[#FF5F5F]/30 animate-pulse" title="Due in less than 2 hours!">
+                                    <span className="relative flex h-1.5 w-1.5">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#FF5F5F] opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#FF5F5F]"></span>
+                                    </span>
+                                    URGENT
+                                  </span>
+                                )}
+                                <span>{task.title}</span>
+                              </h3>
+
+                              {/* Est. Duration vs Day Remaining Progress Bar */}
+                              <div className="flex flex-col gap-1 mt-0.5">
+                                <div className="w-full bg-white/[0.08] rounded-full h-1 overflow-hidden border border-white/5 relative" title={`${task.estimatedDuration}m is ${durationPercent}% of remaining day (${formattedRemaining} left)`}>
+                                  <div 
+                                    className={`h-full rounded-full transition-all duration-500 ${task.completed ? 'bg-[#6B8CAE]/50' : 'bg-gradient-to-r from-[#4FFFB0] to-[#3B82F6]'}`}
+                                    style={{ width: `${durationPercent}%` }}
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between text-[9px] text-[#6B8CAE] font-mono leading-none">
+                                  <span>Est: <strong className={task.completed ? 'text-[#6B8CAE]' : 'text-[#4FFFB0]'}>{task.estimatedDuration}m</strong></span>
+                                  <span>{formattedRemaining} left today ({durationPercent}%)</span>
+                                </div>
+                              </div>
+
+                              {task.description && (
+                                <p className="text-[11px] text-[#6B8CAE] line-clamp-2 leading-relaxed mt-0.5">
+                                  {task.description}
+                                </p>
+                              )}
+                            </div>
+                            {renderUrgencyCircle(urg.pct, urg.color, urg.label, task.completed)}
+                          </div>
+
+                          {/* Interactive Subtasks list (Rich feature block) */}
+                          {task.subtasks && task.subtasks.length > 0 && (
+                            <div className="pl-1.5 border-l border-white/10 ml-2 py-1 flex flex-col gap-2 bg-white/[0.03] border border-white/5 p-2 rounded-lg">
+                              <div className="text-[10px] font-bold text-[#6B8CAE] uppercase tracking-wider mb-1 flex items-center justify-between">
+                                <span>Steps ({task.subtasks.filter(s => s.completed).length}/{task.subtasks.length})</span>
+                                <span className="text-xs text-[#4FFFB0] font-mono">{Math.round((task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100)}%</span>
+                              </div>
+                              {task.subtasks.map(s => (
+                                <div
+                                  key={s.id}
+                                  onClick={(e) => handleToggleSubtask(task.id, s.id, e)}
+                                  className="flex items-center gap-2 text-[11px] text-[#E8F4FD] hover:text-[#4FFFB0] transition-colors py-0.5 cursor-pointer"
+                                >
+                                  {s.completed ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-[#4FFFB0] flex-shrink-0" />
+                                  ) : (
+                                    <Circle className="w-3.5 h-3.5 text-[#6B8CAE] group-hover:text-[#4FFFB0] flex-shrink-0" />
+                                  )}
+                                  <span className={s.completed ? 'line-through text-[#6B8CAE]' : ''}>
+                                    {s.title} <span className="text-[#6B8CAE] font-mono text-[9px]">({s.duration}m)</span>
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           )}
-                          <button
-                            onClick={(e) => handleDeleteTask(task.id, e)}
-                            className="text-xs text-[#6B8CAE] hover:text-[#FF5F5F] transition-colors p-1 hover:bg-[#FF5F5F]/10 rounded-md cursor-pointer"
-                            title="Delete task"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
+
+                          {/* Metadata row */}
+                          <div className="flex items-center justify-between gap-1 pl-1.5 flex-wrap">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 font-syne"
+                                style={{ backgroundColor: catTheme.bg, color: catTheme.text }}
+                              >
+                                {catTheme.icon}
+                                {catTheme.label}
+                              </span>
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                task.priority === 'high' ? 'bg-[#FF5F5F]/15 text-[#FF5F5F]' : task.priority === 'medium' ? 'bg-[#FFD166]/15 text-[#FFD166]' : 'bg-[#4FFFB0]/15 text-[#4FFFB0]'
+                              }`}>
+                                {task.priority.toUpperCase()}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-[#6B8CAE] font-mono flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> {formatTime}
+                            </span>
+                          </div>
+
+                          {/* Action buttons */}
+                          <div className="flex items-center justify-between pt-2 border-t border-white/10 pl-1.5 mt-1">
+                            <button
+                              onClick={(e) => handleToggleTask(task.id, e)}
+                              className="text-xs text-[#6B8CAE] hover:text-[#4FFFB0] transition-colors flex items-center gap-1 bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 px-2.5 py-1 rounded-md cursor-pointer"
+                            >
+                              {task.completed ? <RotateCcw className="w-3 h-3" /> : <Check className="w-3 h-3 text-[#4FFFB0]" />}
+                              {task.completed ? 'Undo' : 'Complete'}
+                            </button>
+
+                            <div className="flex items-center gap-2">
+                              {!task.completed && task.subtasks.length === 0 && (
+                                <button
+                                  onClick={(e) => handleBreakdownTask(task, e)}
+                                  className="text-[11px] text-[#4FFFB0] hover:text-[#3DEBA0] transition-colors flex items-center gap-1 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 px-2 py-1 rounded-md cursor-pointer"
+                                  title="Use TaskPulse's local cognitive engine to break this task down into bite-sized actionable checklists"
+                                >
+                                  <Bot className="w-3 h-3" /> Break down
+                                </button>
+                              )}
+                              <button
+                                onClick={(e) => handleDeleteTask(task.id, e)}
+                                className="text-xs text-[#6B8CAE] hover:text-[#FF5F5F] transition-colors p-1 hover:bg-[#FF5F5F]/10 rounded-md cursor-pointer"
+                                title="Delete task"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   );
                 })
@@ -1338,7 +1599,7 @@ Here are some helpful recommended actions:
           <div className="flex-1 overflow-hidden relative flex flex-col bg-transparent backdrop-blur-xl">
             
             {/* 1. CHAT VIEW */}
-            <div className={`flex-1 flex flex-col overflow-hidden ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
+            <div className={`flex-1 flex-col overflow-hidden ${activeTab === 'chat' ? 'flex' : 'hidden'}`}>
               {/* Chat Sub-Header with clear button */}
               <div className="px-6 py-2.5 border-b border-white/5 bg-white/[0.01] flex items-center justify-between flex-shrink-0">
                 <span className="text-[10px] uppercase tracking-wider text-[#6B8CAE] font-semibold">Active Session History</span>

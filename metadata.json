@@ -1,6 +1,6 @@
 {
   "name": "TaskPulse",
-  "description": "A high-performance task management application with AI-driven deadline tracking, prioritization, urgency indicators, and an interactive schedule planner.",
+  "description": "AI-powered productivity companion that helps you beat deadlines and check chatbot works with the use of api key also",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

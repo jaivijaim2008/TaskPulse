@@ -22,6 +22,7 @@ export interface Task {
   aiPriorityScore?: number; // 0 to 100
   aiUrgencyReason?: string; // AI explanation for priority
   createdAt: string;
+  position?: number;
 }
 
 export interface ChatMessage {
