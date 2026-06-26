@@ -332,11 +332,42 @@ What specific roadblock are you facing with this task? Let's brainstorm a soluti
   }
 
   // DEFAULT CONTEXTUAL RESPONSE
-  let response = `### 💡 TaskPulse Cognitive Advisor
+  const isGeneralQuestion = !msgLower.includes('task') && 
+                            !msgLower.includes('todo') && 
+                            !msgLower.includes('schedule') && 
+                            !msgLower.includes('plan') && 
+                            !msgLower.includes('insight') && 
+                            !msgLower.includes('priority') && 
+                            !msgLower.includes('pomodoro') && 
+                            !msgLower.includes('urgency');
+
+  let response = "";
+  if (isGeneralQuestion) {
+    response += `### 🔌 Local Offline Simulator Active 🔌
+
+I noticed you asked an unscripted or general-knowledge question: *"${message}"*.
+
+Currently, TaskPulse is running in **Offline / Local Simulation Mode** because no active Google Gemini API key is configured in your project environment or secrets. In this local mode, I can only respond using pre-scripted productivity templates (like Pomodoro, daily planners, and priorities).
+
+#### ⚡ How to enable full unscripted real-time AI replies:
+1. Go to the **Settings > Secrets** panel in AI Studio.
+2. Add a valid, active **\`GEMINI_API_KEY\`** (or \`GEMINI_API_KEY1\`) to your secrets.
+3. Click **Save** or **Save Changes**.
+
+Once configured, I will immediately wake up as a super-intelligent companion, powered by **Gemini 3.5 Flash**, capable of answering ANY custom questions, writing code, solving math, or brainstorming unscriptedly!
+
+---
+
+#### 💡 Offline Productivity Advisor:
+`;
+  } else {
+    response += `### 💡 TaskPulse Cognitive Advisor
 
 I have analyzed your request against your **${pending.length} active tasks**. Here are my strategic recommendations:
 
 `;
+  }
+
   if (pending.length > 0) {
     response += `* **Immediate Focus**: Dedicate your next work block to **${pending[0].title}**.\n`;
     if (pending[1]) {
@@ -560,7 +591,8 @@ app.post('/api/chat', async (req, res) => {
 
     if (!ai) {
       // Use fallback chat simulation, but stream the chunks back to user
-      const text = fallbackChat(message, tasks || [], clientTime, history);
+      let text = fallbackChat(message, tasks || [], clientTime, history);
+      text += `\n\n---\n*⚠️ **Offline Simulation Active**: Please add your \`GEMINI_API_KEY\` in your AI Studio secrets to unlock full, unrestricted real-time AI conversation!*`;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Transfer-Encoding', 'chunked');
       
@@ -576,7 +608,8 @@ app.post('/api/chat', async (req, res) => {
     const taskContext = getTaskContextString(tasks);
 
     const systemInstruction = `You are TaskPulse AI — an intelligent, proactive, and encouraging deadline-focused productivity companion.
-Your job is to help users manage, prioritize, and crush their tasks before they run out of time.
+While your core mission is to help users manage, prioritize, and crush their tasks, you are also a fully capable general-purpose AI assistant. If the user asks general, educational, creative, custom, or unscripted questions (such as coding, science, history, calculations, or writing), you MUST answer their questions directly, clearly, and completely. Do not refuse, and do not force them to relate back to their task list if it is not relevant.
+
 You have access to the user's task list. Use this list to provide extremely tailored, contextual, and realistic support.
 If the user feels overwhelmed, break things down and suggest what to tackle first. Keep your tone professional, direct, yet motivating.
 Use markdown for formatting. Avoid dry developer or system telemetry details.
