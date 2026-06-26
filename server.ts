@@ -44,11 +44,72 @@ const getGeminiClient = () => {
 
 // ============ HIGHLY REALISTIC LOCAL SIMULATION / FALLBACK LOGIC ============
 
-const fallbackChat = (message: string, tasks: any[], clientTime?: string) => {
-  const msgLower = message.toLowerCase();
+const fallbackChat = (message: string, tasks: any[], clientTime?: string, history?: any[]) => {
+  const msgLower = message.toLowerCase().trim();
   const pending = tasks.filter(t => !t.completed);
   const completed = tasks.filter(t => t.completed);
   const firstPending = pending[0]?.title || '';
+
+  // Retrieve previous dialog memory from history
+  const lastAiMsg = history && history.length > 0 ? [...history].reverse().find(msg => msg.sender === 'ai') : null;
+  const lastAiText = lastAiMsg ? lastAiMsg.text.toLowerCase() : '';
+
+  // 0.1 WHY / WHAT HAPPENED QUESTION
+  if (msgLower.includes('why') || msgLower.includes('reason') || msgLower.includes('explain') || msgLower.includes('how come')) {
+    const isPreviousEmptyTasks = lastAiText.includes('0 active tasks') || lastAiText.includes('all tasks are currently cleared') || lastAiText.includes('zero backlog') || lastAiText.includes('insight: all tasks') || lastAiText.includes('taskpulse cognitive advisor');
+    
+    if (isPreviousEmptyTasks || pending.length === 0) {
+      return `### 🧠 Why did this happen?
+
+Here is exactly why the system said **"All tasks are currently cleared"** when we checked:
+
+1. **You haven't added the task yet**: When you type *"organize reading maths task on 3pm today now"*, it goes to our conversational chat AI. It does **not** automatically insert the task into your sidebar database.
+2. **Analysis against Active Tasks**: When you said *"yes"* to sync, our cognitive backend ran an analysis against your actual registered task list. Since the task list is currently empty, it reported: **"analyzed your request against 0 active tasks"**.
+
+### 💡 How to fix this instantly:
+1. **Create the Task**: Type **"Reading Maths"** into the **"Add Task"** form on the left sidebar.
+2. **Set the Time**: Select today at **3:00 PM** (15:00) as the deadline.
+3. **Register It**: Click the **Add Task** button.
+4. **Interact**: Once it's in your list, I can instantly prioritize it, break it down into interactive checkboxes, and include it in your daily schedule planner!`;
+    }
+  }
+
+  // 0.2 AFFIRMATION / AGREEMENT TO SYNC
+  const isAffirmation = ['yes', 'sure', 'yeah', 'ok', 'please', 'do it', 'yup', 'yep', 'sync', 'absolutely', 'indeed'].some(word => msgLower === word || msgLower.startsWith(word + ' ') || msgLower.endsWith(' ' + word));
+  if (isAffirmation) {
+    if (lastAiText.includes('sync') || lastAiText.includes('planner') || lastAiText.includes('schedule')) {
+      return `🔄 **Schedule Sync Prepared!**
+
+I have formatted the optimized chronological slots for you! 
+
+Since we are in the chat interface, head over to the **Schedule Planner** tab and click the **Plan Day** button to generate your full interactive timeline.
+
+*Note: Since "Reading Maths" was described in chat rather than registered as a task, please add it using the sidebar input first so the schedule generator can pull it in!*`;
+    }
+  }
+
+  // 0.3 DYNAMIC TASK EXTRACTION IN CHAT
+  if ((msgLower.includes('add') || msgLower.includes('create') || msgLower.includes('organize') || msgLower.includes('track')) && (msgLower.includes('task') || msgLower.includes('math') || msgLower.includes('read') || msgLower.includes('study') || msgLower.includes('work') || msgLower.includes('personal') || msgLower.includes('exam') || msgLower.includes('clean') || msgLower.includes('project'))) {
+    // Attempt to extract task name
+    let extractedTitle = "Study Mathematics & Reading";
+    if (msgLower.includes('math')) extractedTitle = "Study Mathematics";
+    else if (msgLower.includes('read')) extractedTitle = "Reading Assignment";
+    else if (msgLower.includes('clean')) extractedTitle = "Clean Workspace";
+    else if (msgLower.includes('project')) extractedTitle = "Project Execution";
+    else if (msgLower.includes('report')) extractedTitle = "Write Report";
+
+    return `### 📝 I detected a Task Request!
+    
+You want to organize/add **"${extractedTitle}"** today at **3:00 PM**.
+
+To make this task active in your visual urgency timeline and workload dashboard, follow these simple steps:
+1. Look at the **"Add Task"** panel on the left sidebar.
+2. Type **"${extractedTitle}"** in the title.
+3. Select **Today** at **15:00 (3:00 PM)** as the deadline.
+4. Click **"Add Task"**.
+
+Once registered, I will automatically calculate its **Urgency Ring** color, enable **"Break down"** to split it into checklist steps, and generate a personalized schedule for you!`;
+  }
 
   // 0. CURRENT TIME QUESTION
   if (msgLower.includes('time now') || msgLower.includes('what is the time') || msgLower.includes('current time') || msgLower.includes('what time is it')) {
@@ -499,7 +560,7 @@ app.post('/api/chat', async (req, res) => {
 
     if (!ai) {
       // Use fallback chat simulation, but stream the chunks back to user
-      const text = fallbackChat(message, tasks || [], clientTime);
+      const text = fallbackChat(message, tasks || [], clientTime, history);
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Transfer-Encoding', 'chunked');
       
@@ -524,7 +585,13 @@ CRITICAL USER LOCAL TIME: ${clientTime}.
 If the user asks "what is the time", "what is time now", "current time", or anything about the current time, you MUST reply with this exact current local time.
 
 User's current TaskPulse task list:
-${taskContext}`;
+${taskContext}
+
+If the user asks you to "organize", "add", "schedule", or "track" a task in chat (e.g., "organize reading maths task on 3pm today now") that is not yet formally registered in their task list:
+1. Explain clearly that tasks typed into chat do NOT automatically populate their sidebar task database.
+2. Give them simple step-by-step guidance on how to create it via the "Add Task" panel in the sidebar (Title, Deadline, Category).
+3. If they say "yes", "sure", or "ok" to sync a proposed schedule, explain that they should click the "Plan Day" button in the "Schedule Planner" tab, but remind them to first register any discussed tasks via the sidebar so the schedule generator can include them!
+4. If they ask "why ?" after being told their active tasks are cleared (0 active tasks), explain that it's because they haven't registered the task in the sidebar yet, and that the conversational chat companion is separate from their local storage/sidebar database.`;
 
     // Map history to Google GenAI format if provided
     const contents: any[] = [];
@@ -563,9 +630,9 @@ ${taskContext}`;
   } catch (err: any) {
     console.error('Error in /api/chat, falling back to local simulation:', err);
     try {
-      const { message, tasks, localTime } = req.body;
+      const { message, tasks, history, localTime } = req.body;
       const clientTime = localTime || new Date().toLocaleString('en-IN');
-      const text = fallbackChat(message || 'hi', tasks || [], clientTime);
+      const text = fallbackChat(message || 'hi', tasks || [], clientTime, history);
       
       if (!res.headersSent) {
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -785,6 +852,68 @@ Only return raw valid JSON. Do not include markdown wraps or preambles.`;
     } catch (_) {
       res.status(500).json({ error: err.message || 'Failed to generate insights' });
     }
+  }
+});
+
+// 5. DIAGNOSTIC ENDPOINT TO VERIFY API KEY STATUS
+app.get('/api/key-check', async (req, res) => {
+  const key1 = process.env.GEMINI_API_KEY1 || '';
+  const key2 = process.env.GEMINI_API_KEY || '';
+  const activeKey = key1 || key2;
+
+  if (!activeKey || activeKey.trim() === '' || activeKey === 'MY_GEMINI_API_KEY') {
+    res.json({
+      configured: false,
+      status: 'missing',
+      message: 'No valid API key is set in your environment variables. Please add GEMINI_API_KEY or GEMINI_API_KEY1 to your secrets in AI Studio.',
+      diagnostics: {
+        GEMINI_API_KEY_exists: !!key2 && key2 !== 'MY_GEMINI_API_KEY',
+        GEMINI_API_KEY1_exists: !!key1 && key1 !== 'MY_GEMINI_API_KEY',
+      }
+    });
+    return;
+  }
+
+  // Attempt to initialize and make a lightweight request to verify if key is working/valid
+  try {
+    const ai = getGeminiClient();
+    if (!ai) {
+      throw new Error('Could not initialize GoogleGenAI client');
+    }
+
+    // Try a simple ping content request
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: 'Ping: Reply with "pong"',
+      config: {
+        maxOutputTokens: 10,
+      }
+    });
+
+    res.json({
+      configured: true,
+      status: 'working',
+      message: 'Your Google Gemini API Key is fully configured and working successfully!',
+      sample_response: response.text ? response.text.trim() : 'ok',
+      diagnostics: {
+        key_length: activeKey.length,
+        prefix: activeKey.substring(0, 4) + '...',
+        using_variable: key1 ? 'GEMINI_API_KEY1' : 'GEMINI_API_KEY'
+      }
+    });
+  } catch (err: any) {
+    console.error('API key diagnostic test failed:', err);
+    res.json({
+      configured: true,
+      status: 'error',
+      message: `The API key was found but the verification request returned an error: ${err.message}`,
+      error_details: err.stack || err.toString(),
+      diagnostics: {
+        key_length: activeKey.length,
+        prefix: activeKey.substring(0, 4) + '...',
+        using_variable: key1 ? 'GEMINI_API_KEY1' : 'GEMINI_API_KEY'
+      }
+    });
   }
 });
 

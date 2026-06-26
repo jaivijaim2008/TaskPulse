@@ -106,6 +106,7 @@ const triggerVibration = () => {
 export default function App() {
   // ============ STATE ============
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [apiKeyStatus, setApiKeyStatus] = useState<{ configured: boolean; status: string; message: string; diagnostics?: any } | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDesc, setTaskDesc] = useState('');
@@ -297,6 +298,23 @@ What would you like to accomplish first?`,
         }
       ]);
     }
+  }, []);
+
+  // Fetch API key status from backend on mount
+  useEffect(() => {
+    fetch('/api/key-check')
+      .then(res => res.json())
+      .then(data => {
+        setApiKeyStatus(data);
+      })
+      .catch(err => {
+        console.error('Failed to retrieve key status:', err);
+        setApiKeyStatus({
+          configured: false,
+          status: 'error',
+          message: 'Could not connect to diagnostic endpoint'
+        });
+      });
   }, []);
 
   // Save tasks on changes
@@ -1043,10 +1061,34 @@ Here are some helpful recommended actions:
               <span className="sm:hidden">{tasks.filter(t => !t.completed).length}</span>
             </button>
           )}
-          <div className="flex items-center gap-2 bg-white/[0.04] backdrop-blur-md border border-white/10 px-3.5 py-1.5 rounded-full text-xs">
-            <span className="w-2 h-2 rounded-full bg-[#4FFFB0] animate-ping" />
-            <span className="text-[#4FFFB0] font-semibold font-syne">Server Agent Ready</span>
-          </div>
+          {apiKeyStatus === null ? (
+            <div className="flex items-center gap-2 bg-white/[0.04] backdrop-blur-md border border-white/10 px-3.5 py-1.5 rounded-full text-xs" title="Verifying Google Gemini API credentials...">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-[#6B8CAE] font-semibold font-syne">Connecting AI Engine...</span>
+            </div>
+          ) : apiKeyStatus.status === 'working' ? (
+            <div className="flex items-center gap-2 bg-[#4FFFB0]/10 backdrop-blur-md border border-[#4FFFB0]/30 px-3.5 py-1.5 rounded-full text-xs" title={apiKeyStatus.message}>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4FFFB0] opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#4FFFB0]"></span>
+              </span>
+              <span className="text-[#4FFFB0] font-semibold font-syne">Gemini AI Online</span>
+            </div>
+          ) : apiKeyStatus.status === 'error' ? (
+            <div 
+              className="flex items-center gap-2 bg-[#FFD166]/10 backdrop-blur-md border border-[#FFD166]/30 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-[#FFD166]/20 transition-all" 
+              title={`${apiKeyStatus.message}. Click for diagnostic details.`} 
+              onClick={() => alert(`Gemini Key Diagnostic Error:\n\n${apiKeyStatus.message}\n\nRunning in local fallback simulator.`)}
+            >
+              <span className="w-2 h-2 rounded-full bg-[#FFD166] animate-pulse" />
+              <span className="text-[#FFD166] font-semibold font-syne flex items-center gap-1">Gemini Error ⚠️</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-white/[0.04] backdrop-blur-md border border-white/10 px-3.5 py-1.5 rounded-full text-xs" title={`${apiKeyStatus.message}. Running in high-performance local simulation mode.`}>
+              <span className="w-2 h-2 rounded-full bg-[#6B8CAE]" />
+              <span className="text-[#6B8CAE] font-semibold font-syne">Local Cognitive Engine</span>
+            </div>
+          )}
         </div>
       </header>
 
