@@ -1303,10 +1303,10 @@ Here are some helpful recommended actions:
                       onDragOver={(e) => handleDragOver(e, task.id)}
                       onDrop={(e) => handleDrop(e, task.id)}
                       onDragEnd={handleDragEnd}
-                      className={`relative bg-white/[0.02] backdrop-blur-md border rounded-xl p-4 transition-all duration-300 group flex flex-col gap-3 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/30 hover:border-white/20 select-none ${
+                      className={`relative bg-white/[0.02] backdrop-blur-md border rounded-xl p-4 transition-all duration-200 group flex flex-col gap-3 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25 select-none ${
                         inlineEditingTaskId === task.id ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
                       } ${
-                        task.completed ? 'border-white/5 opacity-50 bg-white/[0.005]' : isSelected ? 'border-[#4FFFB0]/80 bg-white/[0.06] shadow-md shadow-black/20' : 'border-white/10 hover:bg-white/[0.04]'
+                        task.completed ? 'border-white/5 opacity-50 bg-white/[0.005]' : isSelected ? 'border-[#4FFFB0]/80 bg-white/[0.06] shadow-md shadow-black/20' : 'border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
                       } ${
                         draggingTaskId === task.id ? 'opacity-40 border-dashed border-[#4FFFB0]/40 scale-95' : ''
                       } ${
