@@ -8,6 +8,10 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
+// Cache the initialized Gemini client
+let cachedGeminiClient: GoogleGenAI | null = null;
+let cachedApiKey: string | null = null;
+
 // Initialize Gemini client with standard User-Agent for telemetry
 const getGeminiClient = () => {
   // Use GEMINI_API_KEY1 first as requested by the user, then GEMINI_API_KEY
@@ -17,8 +21,12 @@ const getGeminiClient = () => {
     return null;
   }
   
+  if (cachedGeminiClient && cachedApiKey === apiKey) {
+    return cachedGeminiClient;
+  }
+
   try {
-    return new GoogleGenAI({
+    cachedGeminiClient = new GoogleGenAI({
       apiKey: apiKey,
       httpOptions: {
         headers: {
@@ -26,6 +34,8 @@ const getGeminiClient = () => {
         }
       }
     });
+    cachedApiKey = apiKey;
+    return cachedGeminiClient;
   } catch (err) {
     console.error('Error initializing GoogleGenAI client:', err);
     return null;
@@ -34,11 +44,17 @@ const getGeminiClient = () => {
 
 // ============ HIGHLY REALISTIC LOCAL SIMULATION / FALLBACK LOGIC ============
 
-const fallbackChat = (message: string, tasks: any[]) => {
+const fallbackChat = (message: string, tasks: any[], clientTime?: string) => {
   const msgLower = message.toLowerCase();
   const pending = tasks.filter(t => !t.completed);
   const completed = tasks.filter(t => t.completed);
   const firstPending = pending[0]?.title || '';
+
+  // 0. CURRENT TIME QUESTION
+  if (msgLower.includes('time now') || msgLower.includes('what is the time') || msgLower.includes('current time') || msgLower.includes('what time is it')) {
+    const timeStr = clientTime || new Date().toLocaleString('en-IN');
+    return `🕒 The current user local time is **${timeStr}**. \n\nLet me know if you want me to help you plan your schedule or tasks around this time!`;
+  }
 
   // 1. GREETINGS & INTRODUCTIONS
   if (msgLower.match(/\b(hi|hello|hey|greetings|good morning|good afternoon|good evening|yo)\b/)) {
@@ -472,17 +488,27 @@ const getTaskContextString = (tasks: any[]) => {
 // 1. CHAT WITH AI ASSISTANT
 app.post('/api/chat', async (req, res) => {
   try {
-    const { message, tasks, history } = req.body;
+    const { message, tasks, history, localTime } = req.body;
     if (!message) {
       res.status(400).json({ error: 'Message is required' });
       return;
     }
 
+    const clientTime = localTime || new Date().toLocaleString('en-IN');
     const ai = getGeminiClient();
+
     if (!ai) {
-      // Use fallback chat simulation
-      const text = fallbackChat(message, tasks || []);
-      res.json({ text });
+      // Use fallback chat simulation, but stream the chunks back to user
+      const text = fallbackChat(message, tasks || [], clientTime);
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Transfer-Encoding', 'chunked');
+      
+      const words = text.split(/(\s+)/);
+      for (const word of words) {
+        res.write(word);
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      res.end();
       return;
     }
 
@@ -494,7 +520,8 @@ You have access to the user's task list. Use this list to provide extremely tail
 If the user feels overwhelmed, break things down and suggest what to tackle first. Keep your tone professional, direct, yet motivating.
 Use markdown for formatting. Avoid dry developer or system telemetry details.
 
-Current time context: ${new Date().toLocaleString('en-IN')}
+CRITICAL USER LOCAL TIME: ${clientTime}.
+If the user asks "what is the time", "what is time now", "current time", or anything about the current time, you MUST reply with this exact current local time.
 
 User's current TaskPulse task list:
 ${taskContext}`;
@@ -515,7 +542,7 @@ ${taskContext}`;
       parts: [{ text: message }],
     });
 
-    const response = await ai.models.generateContent({
+    const responseStream = await ai.models.generateContentStream({
       model: 'gemini-3.5-flash',
       contents: contents,
       config: {
@@ -524,15 +551,39 @@ ${taskContext}`;
       }
     });
 
-    res.json({ text: response.text });
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    for await (const chunk of responseStream) {
+      if (chunk.text) {
+        res.write(chunk.text);
+      }
+    }
+    res.end();
   } catch (err: any) {
     console.error('Error in /api/chat, falling back to local simulation:', err);
     try {
-      const { message, tasks } = req.body;
-      const text = fallbackChat(message || 'hi', tasks || []);
-      res.json({ text });
+      const { message, tasks, localTime } = req.body;
+      const clientTime = localTime || new Date().toLocaleString('en-IN');
+      const text = fallbackChat(message || 'hi', tasks || [], clientTime);
+      
+      if (!res.headersSent) {
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Transfer-Encoding', 'chunked');
+      }
+      
+      const words = text.split(/(\s+)/);
+      for (const word of words) {
+        res.write(word);
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      res.end();
     } catch (_) {
-      res.status(500).json({ error: err.message || 'Failed to generate response' });
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message || 'Failed to generate response' });
+      } else {
+        res.end();
+      }
     }
   }
 });

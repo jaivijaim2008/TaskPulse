@@ -32,6 +32,75 @@ import {
   Download
 } from 'lucide-react';
 
+// ============ INTERACTION FEEDBACK UTILITIES ============
+const playCompletionSound = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+    
+    // Play a delightful upward chime (C5 -> E5 -> G5)
+    const playNote = (freq: number, start: number, duration: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      
+      gain.gain.setValueAtTime(0.08, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.start(start);
+      osc.stop(start + duration);
+    };
+    
+    playNote(523.25, now, 0.12); // C5
+    playNote(659.25, now + 0.06, 0.12); // E5
+    playNote(783.99, now + 0.12, 0.2); // G5
+  } catch (e) {
+    console.warn('Audio playback failed', e);
+  }
+};
+
+const playBreakdownSound = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+    
+    // Play a sci-fi "sparkle" sweep
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(350, now);
+    osc.frequency.exponentialRampToValueAtTime(1000, now + 0.18);
+    
+    gain.gain.setValueAtTime(0.06, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.start(now);
+    osc.stop(now + 0.22);
+  } catch (e) {
+    console.warn('Audio playback failed', e);
+  }
+};
+
+const triggerVibration = () => {
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    // Subtle dual-pulse vibration for tactile completion confirmation on mobile devices
+    navigator.vibrate([40, 30, 40]);
+  }
+};
+
 export default function App() {
   // ============ STATE ============
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -47,6 +116,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [focusedTask, setFocusedTask] = useState<Task | null>(null);
+  const [showUnfinishedModal, setShowUnfinishedModal] = useState(false);
 
   // AI & Chat States
   const [activeTab, setActiveTab] = useState<'chat' | 'schedule' | 'insights'>('chat');
@@ -61,6 +131,7 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
   const recognitionRef = useRef<any>(null);
+  const initialCheckRef = useRef(false);
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -188,12 +259,20 @@ export default function App() {
     tomorrow.setHours(23, 59, 0, 0);
     setTaskDeadline(tomorrow.toISOString().slice(0, 16));
 
-    // Welcome messages
-    setChatMessages([
-      {
-        id: 'welcome',
-        sender: 'ai',
-        text: `### Welcome to **TaskPulse AI**! ⚡
+    // Welcome messages / Restore saved chat history
+    const savedChat = localStorage.getItem('tp_chat_history');
+    if (savedChat) {
+      try {
+        setChatMessages(JSON.parse(savedChat));
+      } catch (e) {
+        console.error('Error parsing saved chat history:', e);
+      }
+    } else {
+      setChatMessages([
+        {
+          id: 'welcome',
+          sender: 'ai',
+          text: `### Welcome to **TaskPulse AI**! ⚡
 
 I'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use our custom on-device Cognitive Engine to help you plan your workload.
 
@@ -203,9 +282,10 @@ I'm your intelligent productivity agent. I keep track of your deadlines, automat
 *   **Analyze workload bottlenecks**: Get real-time productivity insights by clicking **"Full Analysis"**.
 
 What would you like to accomplish first?`,
-        timestamp: new Date().toLocaleTimeString()
-      }
-    ]);
+          timestamp: new Date().toLocaleTimeString()
+        }
+      ]);
+    }
   }, []);
 
   // Save tasks on changes
@@ -215,10 +295,31 @@ What would you like to accomplish first?`,
     }
   }, [tasks]);
 
+  // Save chat history on changes
+  useEffect(() => {
+    if (chatMessages.length > 0) {
+      localStorage.setItem('tp_chat_history', JSON.stringify(chatMessages));
+    }
+  }, [chatMessages]);
+
   // Scroll to bottom of chat
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, isLoading]);
+
+  // One-shot check on startup to show unfinished task warnings
+  useEffect(() => {
+    if (tasks.length > 0 && !initialCheckRef.current) {
+      initialCheckRef.current = true;
+      const hasUnfinished = tasks.some(t => !t.completed);
+      if (hasUnfinished) {
+        const timer = setTimeout(() => {
+          setShowUnfinishedModal(true);
+        }, 1200);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [tasks]);
 
   // ============ TASK HANDLING ============
   const handleExportTasks = () => {
@@ -282,7 +383,12 @@ What would you like to accomplish first?`,
     e.stopPropagation();
     const updated = tasks.map(t => {
       if (t.id === id) {
-        return { ...t, completed: !t.completed };
+        const nextVal = !t.completed;
+        if (nextVal) {
+          playCompletionSound();
+          triggerVibration();
+        }
+        return { ...t, completed: nextVal };
       }
       return t;
     });
@@ -296,7 +402,12 @@ What would you like to accomplish first?`,
       if (t.id === taskId) {
         const updatedSub = t.subtasks.map(s => {
           if (s.id === subtaskId) {
-            return { ...s, completed: !s.completed };
+            const nextVal = !s.completed;
+            if (nextVal) {
+              playCompletionSound();
+              triggerVibration();
+            }
+            return { ...s, completed: nextVal };
           }
           return s;
         });
@@ -396,11 +507,58 @@ What would you like to accomplish first?`,
 
   // ============ INTERACTIVE AI ASSISTANT TRIGGERS ============
 
+  // Helper to handle chat stream and update state chunk by chunk
+  const streamChatResponse = async (response: Response, aiMessageId: string) => {
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('Response body has no reader');
+
+    let done = false;
+    let accumulatedText = '';
+    
+    while (!done) {
+      const { value, done: readerDone } = await reader.read();
+      done = readerDone;
+      if (value) {
+        const chunk = decoder.decode(value, { stream: !done });
+        accumulatedText += chunk;
+        setChatMessages(prev => {
+          return prev.map(msg => msg.id === aiMessageId ? { ...msg, text: accumulatedText } : msg);
+        });
+      }
+    }
+    
+    // Once streaming is complete, save the chat history to localStorage
+    setChatMessages(prev => {
+      const updated = prev.map(msg => msg.id === aiMessageId ? { ...msg, text: accumulatedText } : msg);
+      localStorage.setItem('tp_chat_history', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   // Analyze a task as soon as it's selected or added
   const analyzeTaskDirectly = async (task: Task, currentTasks = tasks) => {
     setIsLoading(true);
     setAgentStatus('thinking');
     setActiveTab('chat');
+
+    const aiMessageId = (Date.now() + 1).toString();
+    // Add user question & blank AI message first so user gets instant visual feedback
+    setChatMessages(prev => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        sender: 'user',
+        text: `Tell me about task "${task.title}"`,
+        timestamp: new Date().toLocaleTimeString()
+      },
+      {
+        id: aiMessageId,
+        sender: 'ai',
+        text: '',
+        timestamp: new Date().toLocaleTimeString()
+      }
+    ]);
 
     try {
       const response = await fetch('/api/chat', {
@@ -409,24 +567,17 @@ What would you like to accomplish first?`,
         body: JSON.stringify({
           message: `Please give me a fast strategic analysis of my newly selected task "${task.title}". Explain how I should approach it and why it fits within my general load.`,
           tasks: currentTasks,
-          history: chatMessages.slice(-4)
+          history: chatMessages.slice(-4),
+          localTime: new Date().toLocaleString()
         })
       });
 
       if (!response.ok) throw new Error('Failed API call');
-      const data = await response.json();
-
-      setChatMessages(prev => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          sender: 'ai',
-          text: data.text,
-          timestamp: new Date().toLocaleTimeString()
-        }
-      ]);
+      
+      await streamChatResponse(response, aiMessageId);
     } catch (e: any) {
       console.error('Error analyzing task:', e);
+      setChatMessages(prev => prev.map(msg => msg.id === aiMessageId ? { ...msg, text: 'Failed to analyze task. Please try again.' } : msg));
     } finally {
       setIsLoading(false);
       setAgentStatus('idle');
@@ -467,6 +618,10 @@ What would you like to accomplish first?`,
       const data = await response.json();
 
       if (data.subtasks && data.subtasks.length > 0) {
+        // Play sound and trigger dual vibration on breakdown completion
+        playBreakdownSound();
+        triggerVibration();
+
         // Map response array to our Subtask schema
         const mappedSubtasks: Subtask[] = data.subtasks.map((s: any, idx: number) => ({
           id: `sub-${task.id}-${idx}-${Date.now()}`,
@@ -602,7 +757,16 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
       text: userMsg,
       timestamp: new Date().toLocaleTimeString()
     };
-    setChatMessages(prev => [...prev, userMessage]);
+    
+    const aiMessageId = (Date.now() + 1).toString();
+    const aiMessagePlaceholder: ChatMessage = {
+      id: aiMessageId,
+      sender: 'ai',
+      text: '',
+      timestamp: new Date().toLocaleTimeString()
+    };
+
+    setChatMessages(prev => [...prev, userMessage, aiMessagePlaceholder]);
     setIsLoading(true);
     setAgentStatus('thinking');
 
@@ -613,7 +777,8 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
         body: JSON.stringify({
           message: userMsg,
           tasks: tasks,
-          history: chatMessages.slice(-10) // Send recent context history
+          history: chatMessages.slice(-10), // Send recent context history
+          localTime: new Date().toLocaleString()
         })
       });
 
@@ -634,34 +799,20 @@ ${mappedSubtasks.map(s => `*   **${s.title}** (${s.duration} min)`).join('\n')}`
         } catch (_) {}
         throw new Error(errMsg);
       }
-      const data = await response.json();
-
-      setChatMessages(prev => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          sender: 'ai',
-          text: data.text,
-          timestamp: new Date().toLocaleTimeString()
-        }
-      ]);
+      
+      await streamChatResponse(response, aiMessageId);
     } catch (err: any) {
       console.error(err);
-      setChatMessages(prev => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          sender: 'ai',
-          text: `I had a temporary connection hiccup with our servers, but I've processed your message locally!
+      setChatMessages(prev => prev.map(msg => msg.id === aiMessageId ? {
+        ...msg,
+        text: `I had a temporary connection hiccup with our servers, but I've processed your message locally!
 
 Here are some helpful recommended actions:
 1. **Try refreshing**: A quick page reload can restore live connection sync.
 2. **Review your tasks**: Keep adding and updating tasks in the sidebar to feed new data to our local cognitive engine.
 
-*Your session and task planner remain 100% active offline.*`,
-          timestamp: new Date().toLocaleTimeString()
-        }
-      ]);
+*Your session and task planner remain 100% active offline.*`
+      } : msg));
     } finally {
       setIsLoading(false);
       setAgentStatus('idle');
@@ -734,7 +885,7 @@ Here are some helpful recommended actions:
   const completedCount = tasks.filter(t => t.completed).length;
 
   return (
-    <div id="taskpulse-app" className="flex flex-col min-h-screen bg-[#030712] text-[#E8F4FD] font-sans selection:bg-[#4FFFB0]/30 relative overflow-hidden">
+    <div id="taskpulse-app" className="flex flex-col h-screen bg-[#030712] text-[#E8F4FD] font-sans selection:bg-[#4FFFB0]/30 relative overflow-hidden">
       
       {/* Liquid Glass vibrant ambient background refractions */}
       <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-[#4FFFB0]/15 blur-[120px] pointer-events-none animate-pulse duration-[10s]" />
@@ -755,7 +906,7 @@ Here are some helpful recommended actions:
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#4FFFB0] to-[#3B82F6] relative flex items-center justify-center shadow-[0_0_20px_rgba(79,255,176,0.4)] animate-pulse">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#4FFFB0] to-[#3B82F6] relative flex items-center justify-center border border-white/20">
             <span className="text-xs">⚡</span>
           </div>
           <span className="font-extrabold text-xl tracking-tight font-syne">
@@ -763,6 +914,17 @@ Here are some helpful recommended actions:
           </span>
         </div>
         <div className="flex items-center gap-3">
+          {tasks.filter(t => !t.completed).length > 0 && (
+            <button
+              onClick={() => setShowUnfinishedModal(true)}
+              className="flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 hover:border-red-500/40 text-[#FF5F5F] px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer"
+              title="You have unfinished tasks. Click to view alert!"
+            >
+              <Flame className="w-3.5 h-3.5 text-[#FF5F5F]" />
+              <span className="hidden sm:inline">{tasks.filter(t => !t.completed).length} Unfinished</span>
+              <span className="sm:hidden">{tasks.filter(t => !t.completed).length}</span>
+            </button>
+          )}
           <div className="flex items-center gap-2 bg-white/[0.04] backdrop-blur-md border border-white/10 px-3.5 py-1.5 rounded-full text-xs">
             <span className="w-2 h-2 rounded-full bg-[#4FFFB0] animate-ping" />
             <span className="text-[#4FFFB0] font-semibold font-syne">Server Agent Ready</span>
@@ -771,7 +933,7 @@ Here are some helpful recommended actions:
       </header>
 
       {/* BODY LAYOUT */}
-      <div id="layout-body" className="grid grid-cols-1 md:grid-cols-[380px_1fr] flex-1 min-h-[calc(100vh-64px)] relative z-10">
+      <div id="layout-body" className="grid grid-cols-1 md:grid-cols-[380px_1fr] flex-1 h-[calc(100vh-64px)] overflow-hidden relative z-10">
         
         {/* Mobile Sidebar overlay backdrop */}
         {mobileSidebarOpen && (
@@ -798,7 +960,7 @@ Here are some helpful recommended actions:
               <button
                 type="button"
                 onClick={handleExportTasks}
-                className="text-[10px] font-bold uppercase tracking-wide text-[#4FFFB0] hover:text-[#3DEBA0] bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 px-2 py-1 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-[0_0_10px_rgba(79,255,176,0.05)] hover:shadow-[0_0_15px_rgba(79,255,176,0.15)] focus:outline-none"
+                className="text-[10px] font-bold uppercase tracking-wide text-[#4FFFB0] hover:text-[#3DEBA0] bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 px-2 py-1 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-md focus:outline-none"
                 title="Export tasks to JSON file backup"
               >
                 <Download className="w-3 h-3 text-[#4FFFB0]" /> Backup JSON
@@ -975,7 +1137,7 @@ Here are some helpful recommended actions:
                       key={task.id}
                       onClick={() => selectTaskDirectly(task.id)}
                       className={`relative bg-white/[0.02] backdrop-blur-md border rounded-xl p-4 cursor-pointer transition-all duration-200 group flex flex-col gap-3 hover:translate-x-0.5 ${
-                        task.completed ? 'border-white/5 opacity-50 bg-white/[0.005]' : isSelected ? 'border-[#4FFFB0]/80 bg-white/[0.06] shadow-[0_0_25px_rgba(79,255,176,0.12)]' : 'border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
+                        task.completed ? 'border-white/5 opacity-50 bg-white/[0.005]' : isSelected ? 'border-[#4FFFB0]/80 bg-white/[0.06] shadow-md shadow-black/20' : 'border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
                       }`}
                     >
                       {/* Accent strip */}
@@ -1177,6 +1339,28 @@ Here are some helpful recommended actions:
             
             {/* 1. CHAT VIEW */}
             <div className={`flex-1 flex flex-col overflow-hidden ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
+              {/* Chat Sub-Header with clear button */}
+              <div className="px-6 py-2.5 border-b border-white/5 bg-white/[0.01] flex items-center justify-between flex-shrink-0">
+                <span className="text-[10px] uppercase tracking-wider text-[#6B8CAE] font-semibold">Active Session History</span>
+                <button
+                  onClick={() => {
+                    if (window.confirm("Are you sure you want to clear the chat history?")) {
+                      localStorage.removeItem('tp_chat_history');
+                      setChatMessages([
+                        {
+                          id: 'welcome',
+                          sender: 'ai',
+                          text: `### Welcome to **TaskPulse AI**! ⚡\n\nI'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use our custom on-device Cognitive Engine to help you plan your workload.\n\n**What I can do for you:**\n*   **Deconstruct complex tasks**: Click **"Break down"** on any task card to generate interactive subtasks.\n*   **Build optimized schedules**: Click **"Plan Day"** or the button below to generate an hour-by-hour planner.\n*   **Analyze workload bottlenecks**: Get real-time productivity insights by clicking **"Full Analysis"**.\n\nWhat would you like to accomplish first?`,
+                          timestamp: new Date().toLocaleTimeString()
+                        }
+                      ]);
+                    }
+                  }}
+                  className="text-[10px] font-bold uppercase tracking-wide text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/15 border border-red-500/20 px-2.5 py-1 rounded transition-all cursor-pointer"
+                >
+                  Clear Chat
+                </button>
+              </div>
               <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4 custom-scrollbar">
                 {chatMessages.map(msg => (
                   <div
@@ -1268,7 +1452,7 @@ Here are some helpful recommended actions:
                     }
                     className={`w-11 h-11 rounded-lg flex items-center justify-center transition-all border flex-shrink-0 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
                       isListening
-                        ? 'bg-[#FF4F4F] hover:bg-[#E03D3D] border-[#FF4F4F] text-[#E8F4FD] animate-pulse shadow-[0_0_15px_rgba(255,79,79,0.4)]'
+                        ? 'bg-[#FF4F4F] hover:bg-[#E03D3D] border-[#FF4F4F] text-[#E8F4FD] animate-pulse shadow-md'
                         : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#4FFFB0]'
                     }`}
                   >
@@ -1281,7 +1465,7 @@ Here are some helpful recommended actions:
                   <button
                     type="submit"
                     disabled={!chatInput.trim() || isLoading}
-                    className="w-11 h-11 rounded-lg bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] flex items-center justify-center font-bold transition-all shadow-md shadow-[#4FFFB0]/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
+                    className="w-11 h-11 rounded-lg bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] flex items-center justify-center font-bold transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
                   >
                     <Send className="w-5 h-5" />
                   </button>
@@ -1426,7 +1610,7 @@ Here are some helpful recommended actions:
           />
           
           {/* Glass popup card */}
-          <div className="relative w-full max-w-lg bg-[#0D1B2E]/80 backdrop-blur-2xl border border-white/10 rounded-2xl p-6 shadow-[0_0_50px_rgba(79,255,176,0.15)] flex flex-col gap-4 overflow-hidden animate-zoom-in">
+          <div className="relative w-full max-w-lg bg-[#0D1B2E]/85 backdrop-blur-2xl border border-white/10 rounded-2xl p-6 shadow-2xl shadow-black/80 flex flex-col gap-4 overflow-hidden animate-zoom-in">
             {/* Liquid aesthetic lighting decoration */}
             <div className="absolute -top-12 -right-12 w-24 h-24 rounded-full bg-[#4FFFB0]/20 blur-xl pointer-events-none" />
             <div className="absolute -bottom-12 -left-12 w-24 h-24 rounded-full bg-[#7B61FF]/20 blur-xl pointer-events-none" />
@@ -1613,6 +1797,109 @@ Here are some helpful recommended actions:
                 className="bg-[#FF5F5F]/10 hover:bg-[#FF5F5F]/20 border border-[#FF5F5F]/20 text-xs text-[#FF5F5F] px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Delete Task
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⚠️ Unfinished / Pending Tasks Alert Dialog Popup */}
+      {showUnfinishedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+          {/* Backdrop overlay */}
+          <div 
+            className="absolute inset-0 bg-black/65 backdrop-blur-md"
+            onClick={() => setShowUnfinishedModal(false)}
+          />
+          
+          {/* Main glass dialogue card */}
+          <div className="relative w-full max-w-md bg-[#0D1B2E]/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-6 shadow-2xl shadow-black/80 flex flex-col gap-4 overflow-hidden animate-zoom-in">
+            {/* Minimal decoration */}
+            <div className="absolute -top-12 -right-12 w-24 h-24 rounded-full bg-[#FF5F5F]/15 blur-xl pointer-events-none" />
+            <div className="absolute -bottom-12 -left-12 w-24 h-24 rounded-full bg-[#FFD166]/10 blur-xl pointer-events-none" />
+
+            <div className="flex items-start justify-between gap-4 relative z-10">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-[#FF5F5F]/10 flex items-center justify-center border border-[#FF5F5F]/20">
+                  <Flame className="w-4 h-4 text-[#FF5F5F]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#E8F4FD] font-syne uppercase tracking-wider">
+                    Unfinished Tasks Warning
+                  </h3>
+                  <p className="text-[11px] text-[#6B8CAE]">
+                    You have <span className="font-bold text-[#FF5F5F]">{tasks.filter(t => !t.completed).length} pending tasks</span> requiring focus!
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowUnfinishedModal(false)}
+                className="text-[#6B8CAE] hover:text-[#E8F4FD] p-1.5 hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* List of unfinished tasks in popup */}
+            <div className="space-y-2 relative z-10 max-h-[45vh] overflow-y-auto pr-1 custom-scrollbar">
+              {tasks.filter(t => !t.completed).map(task => {
+                const urg = getUrgencyDetails(task.deadline);
+                return (
+                  <div 
+                    key={task.id}
+                    onClick={() => {
+                      setShowUnfinishedModal(false);
+                      selectTaskDirectly(task.id);
+                    }}
+                    className="group bg-[#112236]/40 hover:bg-[#112236]/70 border border-white/5 hover:border-white/10 p-3 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all duration-150"
+                  >
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                      <h4 className="text-xs font-bold text-[#E8F4FD] group-hover:text-[#4FFFB0] truncate transition-colors">
+                        {task.title}
+                      </h4>
+                      <div className="flex items-center gap-2 text-[10px] text-[#6B8CAE]">
+                        <span className="font-semibold font-mono" style={{ color: urg.color }}>
+                          {urg.emoji} {urg.label}
+                        </span>
+                        <span>•</span>
+                        <span>{task.estimatedDuration} mins</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleTask(task.id, e);
+                      }}
+                      className="w-6 h-6 rounded-md bg-[#4FFFB0]/10 hover:bg-[#4FFFB0]/20 border border-[#4FFFB0]/20 hover:border-[#4FFFB0]/40 flex items-center justify-center text-[#4FFFB0] transition-colors cursor-pointer"
+                      title="Quick Mark Completed"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer triggers */}
+            <div className="flex gap-2.5 relative z-10 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUnfinishedModal(false);
+                  handlePlanDay();
+                }}
+                className="flex-1 bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] text-xs font-bold py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Calendar className="w-3.5 h-3.5" /> Plan Schedule
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowUnfinishedModal(false)}
+                className="px-4 bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-[#E8F4FD] rounded-xl transition-colors cursor-pointer"
+              >
+                Dismiss
               </button>
             </div>
           </div>
