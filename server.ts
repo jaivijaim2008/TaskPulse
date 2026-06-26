@@ -10,8 +10,26 @@ app.use(express.json());
 
 // Initialize Gemini client with standard User-Agent for telemetry
 const getGeminiClient = () => {
-  // Always return null to bypass external APIs and rely exclusively on TaskPulse's robust on-device cognitive engine
-  return null;
+  // Use GEMINI_API_KEY1 first as requested by the user, then GEMINI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY1 || process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.trim() === '') {
+    console.warn('Gemini API Key is not configured. Falling back to local simulation.');
+    return null;
+  }
+  
+  try {
+    return new GoogleGenAI({
+      apiKey: apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Error initializing GoogleGenAI client:', err);
+    return null;
+  }
 };
 
 // ============ HIGHLY REALISTIC LOCAL SIMULATION / FALLBACK LOGIC ============
@@ -58,7 +76,7 @@ Would you like me to map out a Pomodoro sprint sequence for **${firstPending || 
   }
 
   // 3. PRIORITIZATION / EISENHOWER / EAT THE FROG
-  if (msgLower.includes('prioritize') || msgLower.includes('how to start') || msgLower.includes('what to do first') || msgLower.includes('triage') || msgLower.includes('frog')) {
+  if (msgLower.includes('prioritize') || msgLower.includes('how to start') || msgLower.includes('what to do first') || msgLower.includes('triage') || msgLower.includes('frog') || msgLower.includes('risk') || msgLower.includes('deadline')) {
     if (pending.length === 0) {
       return `### 🗺️ Prioritization Strategy: Clear Runway
       
@@ -68,23 +86,102 @@ You have completed all active tasks! To plan your next move:
 3. Register them as tasks to establish high-focus sprints.`;
     }
 
-    let response = `### 🐸 "Eat the Frog" Prioritization Strategy
+    // Advanced dynamic local risk calculation
+    const now = new Date();
+    const scoredTasks = pending.map(t => {
+      let priorityWeight = 15; // Low
+      const p = t.priority.toLowerCase();
+      if (p === 'medium') priorityWeight = 30;
+      if (p === 'high' || p === 'urgent') priorityWeight = 45;
 
-According to the famous productivity rule, you should "Eat the Frog" (tackle your most difficult/important task first thing in the morning). 
+      let timeWeight = 10;
+      let timeLabel = 'No urgent deadline';
+      let hoursLeft = Infinity;
 
-Here is your tailored **Priority Matrix** based on your sidebar:
+      if (t.deadline) {
+        const due = new Date(t.deadline);
+        const msDiff = due.getTime() - now.getTime();
+        hoursLeft = msDiff / (1000 * 60 * 60);
 
-* **The Frog (Do First)**: **${pending[0].title}**
-  * *Why*: Marked as ${pending[0].priority} priority. Completing this releases the maximum cognitive friction and builds powerful momentum.
-`;
-    if (pending[1]) {
-      response += `* **Secondary Sprint (Do Next)**: **${pending[1].title}** (${pending[1].category} Category)\n`;
-    }
-    if (pending.length > 2) {
-      response += `* **Batch Block (Do Later)**: Group ${pending.slice(2).map(t => `"${t.title}"`).join(', ')} together in a single afternoon context.\n`;
-    }
-    
-    response += `\n💡 **Pro Tip**: Minimize context switching by staying in the same category zone (e.g. Work or Personal) as long as possible.`;
+        if (hoursLeft < 0) {
+          timeWeight = 55; // Overdue
+          timeLabel = `Overdue by ${Math.abs(Math.round(hoursLeft))} hours! ⚠️`;
+        } else if (hoursLeft <= 12) {
+          timeWeight = 50; // Due within half day
+          timeLabel = `Due in ${Math.round(hoursLeft)} hours! 🚨`;
+        } else if (hoursLeft <= 24) {
+          timeWeight = 40; // Due within a day
+          timeLabel = `Due in ${Math.round(hoursLeft)} hours. ⏰`;
+        } else if (hoursLeft <= 48) {
+          timeWeight = 30; // Due within 2 days
+          timeLabel = `Due in 2 days.`;
+        } else if (hoursLeft <= 168) {
+          timeWeight = 15; // Due within a week
+          timeLabel = `Due in ${Math.round(hoursLeft / 24)} days.`;
+        } else {
+          timeWeight = 5;
+          timeLabel = `Due in ${Math.round(hoursLeft / 24)} days.`;
+        }
+      }
+
+      const totalScore = Math.min(100, priorityWeight + timeWeight);
+      
+      // Determine zone
+      let zone = '🟢 Low Risk';
+      let emoji = '🟢';
+      if (totalScore >= 80) {
+        zone = '🚨 CRITICAL RISK';
+        emoji = '🔴';
+      } else if (totalScore >= 60) {
+        zone = '⚠️ HIGH RISK';
+        emoji = '🟠';
+      } else if (totalScore >= 35) {
+        zone = '⚡ MEDIUM RISK';
+        emoji = '🟡';
+      }
+
+      // Generate a tiny ASCII meter
+      const meterFilled = Math.round(totalScore / 10);
+      const meter = '█'.repeat(meterFilled) + '░'.repeat(10 - meterFilled);
+
+      return {
+        ...t,
+        score: totalScore,
+        zone,
+        emoji,
+        meter,
+        timeLabel,
+        hoursLeft
+      };
+    });
+
+    // Sort by Risk Score descending, then by priority level, then by earliest deadline
+    scoredTasks.sort((a, b) => b.score - a.score);
+
+    let response = `### 🧠 Cognitive Risk-Score Prioritization Report\n`;
+    response += `My internal cognitive engine has analyzed your **${pending.length} pending tasks** using our **Dual-Factor Triage Matrix** (combining custom *Priority Weight* + *Proximity-to-Deadline urgency*):\n\n`;
+
+    scoredTasks.forEach((t, i) => {
+      response += `#### ${i + 1}. ${t.emoji} ${t.title}\n`;
+      response += `*   **Risk Zone**: **${t.zone}** (Score: **${t.score}/100**)\n`;
+      response += `*   **Risk Meter**: \`[${t.meter}]\`\n`;
+      response += `*   **Time Horizon**: *${t.timeLabel}* | **Priority**: *${t.priority}*\n`;
+      if (t.description) {
+        response += `*   **Context**: _${t.description}_\n`;
+      }
+      
+      // Give custom action items based on risk score
+      if (t.score >= 80) {
+        response += `*   **Execution Strategy**: **Isolate & Conquer**. Shut down all communication channels, ignore low-priority items, and click **"Break down"** on this task card to start checking off its first actionable subtask immediately.\n`;
+      } else if (t.score >= 60) {
+        response += `*   **Execution Strategy**: **Next in Queue**. Block out 45 minutes right after your current deep-work sprint. Avoid picking up personal chores or low-importance emails until this is complete.\n`;
+      } else {
+        response += `*   **Execution Strategy**: **Batch Allocation**. Keep these grouped together and address them in a dedicated administrative slot later in the afternoon when your main energy is depleted.\n`;
+      }
+      response += `\n`;
+    });
+
+    response += `\n💡 **Focus Recommendation**: Your absolute highest leverage action is to attack **${scoredTasks[0].title}** first. It currently represents your largest bottleneck. Would you like me to map out a dedicated, minute-by-minute schedule around this risk model? Just ask!`;
     return response;
   }
 

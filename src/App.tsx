@@ -23,7 +23,12 @@ import {
   RotateCcw,
   Clock,
   Flame,
-  FileText
+  FileText,
+  Mic,
+  MicOff,
+  Search,
+  X,
+  Menu
 } from 'lucide-react';
 
 export default function App() {
@@ -37,6 +42,11 @@ export default function App() {
   const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [taskDuration, setTaskDuration] = useState(30);
 
+  // Search & Mobile & Popup States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [focusedTask, setFocusedTask] = useState<Task | null>(null);
+
   // AI & Chat States
   const [activeTab, setActiveTab] = useState<'chat' | 'schedule' | 'insights'>('chat');
   const [chatInput, setChatInput] = useState('');
@@ -45,6 +55,66 @@ export default function App() {
   const [scheduleData, setScheduleData] = useState<ScheduleData | null>(null);
   const [insights, setInsights] = useState<InsightItem[]>([]);
   const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking'>('idle');
+
+  // Web Speech API states
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(true);
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setSpeechSupported(false);
+    }
+  }, []);
+
+  const toggleListening = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not supported in this browser. Please use Chrome, Safari, or Edge.");
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+    } else {
+      try {
+        const rec = new SpeechRecognition();
+        rec.continuous = false;
+        rec.interimResults = false;
+        rec.lang = 'en-US';
+
+        rec.onstart = () => {
+          setIsListening(true);
+        };
+
+        rec.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          if (transcript) {
+            setChatInput(prev => prev ? `${prev} ${transcript}` : transcript);
+          }
+        };
+
+        rec.onerror = (event: any) => {
+          console.error("Speech recognition error:", event.error);
+          setIsListening(false);
+        };
+
+        rec.onend = () => {
+          setIsListening(false);
+        };
+
+        recognitionRef.current = rec;
+        rec.start();
+      } catch (err) {
+        console.error("Failed to start SpeechRecognition:", err);
+        setIsListening(false);
+      }
+    }
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -173,6 +243,7 @@ What would you like to accomplish first?`,
 
     setTaskTitle('');
     setTaskDesc('');
+    setMobileSidebarOpen(false);
     
     // Auto-select and trigger dynamic AI assessment
     setSelectedTaskId(newTask.id);
@@ -645,11 +716,26 @@ Here are some helpful recommended actions:
   const completedCount = tasks.filter(t => t.completed).length;
 
   return (
-    <div id="taskpulse-app" className="flex flex-col min-h-screen bg-[#050B1A] text-[#E8F4FD] font-sans selection:bg-[#4FFFB0]/30">
+    <div id="taskpulse-app" className="flex flex-col min-h-screen bg-[#050B1A] text-[#E8F4FD] font-sans selection:bg-[#4FFFB0]/30 relative overflow-hidden">
       
+      {/* Liquid Glass ambient background blobs */}
+      <div className="absolute top-1/4 left-1/3 w-72 h-72 rounded-full bg-[#4FFFB0]/10 blur-[100px] pointer-events-none animate-pulse duration-[8s]" />
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-[#7B61FF]/10 blur-[120px] pointer-events-none animate-pulse duration-[12s]" />
+      <div className="absolute top-1/2 right-1/3 w-80 h-80 rounded-full bg-[#3B82F6]/5 blur-[90px] pointer-events-none animate-pulse duration-[10s]" />
+
       {/* HEADER */}
-      <header id="header" className="bg-[#0D1B2E] border-b border-[#1E3355] px-6 h-16 flex items-center justify-between sticky top-0 z-50">
+      <header id="header" className="bg-[#0D1B2E]/80 backdrop-blur-md border-b border-white/10 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-3">
+          {/* Mobile hamburger toggle */}
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen(prev => !prev)}
+            className="md:hidden p-1.5 rounded-lg bg-[#112236]/80 hover:bg-[#1E3355] border border-white/5 text-[#4FFFB0] hover:text-[#3DEBA0] transition-colors focus:outline-none cursor-pointer"
+            title="Toggle Sidebar"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
           <div className="w-8 h-8 rounded-full bg-[#4FFFB0] relative flex items-center justify-center shadow-[0_0_15px_rgba(79,255,176,0.3)] animate-pulse">
             <span className="text-xs">⚡</span>
           </div>
@@ -658,7 +744,7 @@ Here are some helpful recommended actions:
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-[#112236] border border-[#1E3355] px-3.5 py-1.5 rounded-full text-xs">
+          <div className="flex items-center gap-2 bg-[#112236]/60 backdrop-blur-md border border-white/5 px-3.5 py-1.5 rounded-full text-xs">
             <span className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-ping" />
             <span className="text-[#4FFFB0] font-medium font-syne">Server Agent Ready</span>
           </div>
@@ -666,10 +752,23 @@ Here are some helpful recommended actions:
       </header>
 
       {/* BODY LAYOUT */}
-      <div id="layout-body" className="grid grid-cols-1 md:grid-cols-[380px_1fr] flex-1 min-h-[calc(100vh-64px)]">
+      <div id="layout-body" className="grid grid-cols-1 md:grid-cols-[380px_1fr] flex-1 min-h-[calc(100vh-64px)] relative z-10">
         
+        {/* Mobile Sidebar overlay backdrop */}
+        {mobileSidebarOpen && (
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-md z-30 md:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+        )}
+
         {/* LEFT PANEL: Task Sidebar */}
-        <aside id="sidebar" className="bg-[#0D1B2E] border-r border-[#1E3355] flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)]">
+        <aside 
+          id="sidebar" 
+          className={`bg-[#0D1B2E]/95 md:bg-[#0D1B2E]/60 md:backdrop-blur-xl border-r border-white/5 flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] fixed md:static top-16 bottom-0 left-0 z-40 w-[320px] md:w-auto transition-transform duration-300 transform ${
+            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          }`}
+        >
           
           {/* Header & Task Creation Form */}
           <div className="p-5 border-b border-[#1E3355] flex-shrink-0 bg-[#0D1B2E]/95">
@@ -770,6 +869,29 @@ Here are some helpful recommended actions:
             </form>
           </div>
 
+          {/* Search bar */}
+          <div className="px-5 py-3 border-b border-[#1E3355]/40 bg-[#0D1B2E]/40 flex items-center gap-2 flex-shrink-0">
+            <div className="relative w-full">
+              <Search className="w-4 h-4 text-[#6B8CAE] absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search tasks by title or details..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full bg-[#112236]/60 backdrop-blur-md border border-[#1E3355]/80 text-[#E8F4FD] pl-9 pr-8 py-1.5 rounded-lg text-xs outline-none focus:border-[#4FFFB0] transition-all placeholder:text-[#6B8CAE]"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2 cursor-pointer text-[#6B8CAE] hover:text-[#E8F4FD] bg-transparent border-none outline-none"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Scrollable Task List */}
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar">
             {tasks.length === 0 ? (
@@ -778,8 +900,20 @@ Here are some helpful recommended actions:
                 <p className="text-sm font-semibold text-[#E8F4FD] font-syne">No tasks planned yet</p>
                 <p className="text-xs text-[#6B8CAE] mt-1">Add tasks above to organize your time and let AI optimize your agenda.</p>
               </div>
+            ) : tasks.filter(t => 
+                t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                (t.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+              ).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                <span className="text-2xl mb-2">🔍</span>
+                <p className="text-xs font-semibold text-[#6B8CAE]">No tasks match your search</p>
+              </div>
             ) : (
               tasks
+                .filter(t => 
+                  t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                  (t.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+                )
                 .sort((a, b) => {
                   if (a.completed !== b.completed) return a.completed ? 1 : -1;
                   return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
@@ -794,6 +928,18 @@ Here are some helpful recommended actions:
                     hour: '2-digit',
                     minute: '2-digit'
                   });
+
+                  // Calculate remaining time in the day
+                  const now = new Date();
+                  const endOfDay = new Date(now);
+                  endOfDay.setHours(23, 59, 59, 999);
+                  const remainingMs = endOfDay.getTime() - now.getTime();
+                  const remainingMinutes = Math.max(1, Math.round(remainingMs / (1000 * 60)));
+                  const durationPercent = Math.min(100, Math.max(1, Math.round((task.estimatedDuration / remainingMinutes) * 100)));
+
+                  const remHours = Math.floor(remainingMinutes / 60);
+                  const remMins = remainingMinutes % 60;
+                  const formattedRemaining = remHours > 0 ? `${remHours}h ${remMins}m` : `${remMins}m`;
 
                   return (
                     <div
@@ -811,12 +957,27 @@ Here are some helpful recommended actions:
 
                       {/* Header row */}
                       <div className="flex items-start justify-between gap-2 pl-1.5">
-                        <div className="flex flex-col gap-1 flex-1">
+                        <div className="flex flex-col gap-1.5 flex-1">
                           <h3 className={`text-sm font-bold tracking-tight leading-snug group-hover:text-[#4FFFB0] transition-colors ${task.completed ? 'line-through text-[#6B8CAE]' : 'text-[#E8F4FD]'}`}>
                             {task.title}
                           </h3>
+
+                          {/* Est. Duration vs Day Remaining Progress Bar */}
+                          <div className="flex flex-col gap-1 mt-0.5">
+                            <div className="w-full bg-[#112236]/80 rounded-full h-1 overflow-hidden border border-white/5 relative" title={`${task.estimatedDuration}m is ${durationPercent}% of remaining day (${formattedRemaining} left)`}>
+                              <div 
+                                className={`h-full rounded-full transition-all duration-500 ${task.completed ? 'bg-[#6B8CAE]/50' : 'bg-gradient-to-r from-[#4FFFB0] to-[#3B82F6]'}`}
+                                style={{ width: `${durationPercent}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[9px] text-[#6B8CAE] font-mono leading-none">
+                              <span>Est: <strong className={task.completed ? 'text-[#6B8CAE]' : 'text-[#4FFFB0]'}>{task.estimatedDuration}m</strong></span>
+                              <span>{formattedRemaining} left today ({durationPercent}%)</span>
+                            </div>
+                          </div>
+
                           {task.description && (
-                            <p className="text-[11px] text-[#6B8CAE] line-clamp-2 leading-relaxed">
+                            <p className="text-[11px] text-[#6B8CAE] line-clamp-2 leading-relaxed mt-0.5">
                               {task.description}
                             </p>
                           )}
@@ -1066,6 +1227,29 @@ Here are some helpful recommended actions:
                     className="flex-1 bg-[#112236] border border-[#1E3355] text-[#E8F4FD] px-4 py-3 rounded-lg text-sm outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] transition-colors resize-none max-h-24"
                   />
                   <button
+                    type="button"
+                    onClick={toggleListening}
+                    disabled={!speechSupported}
+                    title={
+                      !speechSupported 
+                        ? "Web Speech API is not supported in your browser" 
+                        : isListening 
+                          ? "Listening... Click to stop" 
+                          : "Dictate with voice input"
+                    }
+                    className={`w-11 h-11 rounded-lg flex items-center justify-center transition-all border flex-shrink-0 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                      isListening
+                        ? 'bg-[#FF4F4F] hover:bg-[#E03D3D] border-[#FF4F4F] text-[#E8F4FD] animate-pulse shadow-[0_0_15px_rgba(255,79,79,0.4)]'
+                        : 'bg-[#112236] hover:bg-[#1E3355] border-[#1E3355] hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#4FFFB0]'
+                    }`}
+                  >
+                    {isListening ? (
+                      <MicOff className="w-5 h-5 animate-pulse" />
+                    ) : (
+                      <Mic className="w-5 h-5" />
+                    )}
+                  </button>
+                  <button
                     type="submit"
                     disabled={!chatInput.trim() || isLoading}
                     className="w-11 h-11 rounded-lg bg-[#4FFFB0] hover:bg-[#3DEBA0] text-[#050B1A] flex items-center justify-center font-bold transition-all shadow-md shadow-[#4FFFB0]/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
@@ -1202,6 +1386,209 @@ Here are some helpful recommended actions:
         </main>
 
       </div>
+
+      {/* Fully Interactive Liquid Glass Pop-Up for Task Focus */}
+      {focusedTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+          {/* Liquid backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/50 backdrop-blur-md"
+            onClick={() => setFocusedTask(null)}
+          />
+          
+          {/* Glass popup card */}
+          <div className="relative w-full max-w-lg bg-[#0D1B2E]/80 backdrop-blur-2xl border border-white/10 rounded-2xl p-6 shadow-[0_0_50px_rgba(79,255,176,0.15)] flex flex-col gap-4 overflow-hidden animate-zoom-in">
+            {/* Liquid aesthetic lighting decoration */}
+            <div className="absolute -top-12 -right-12 w-24 h-24 rounded-full bg-[#4FFFB0]/20 blur-xl pointer-events-none" />
+            <div className="absolute -bottom-12 -left-12 w-24 h-24 rounded-full bg-[#7B61FF]/20 blur-xl pointer-events-none" />
+
+            <div className="flex items-start justify-between gap-4 relative z-10">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: getCategoryTheme(focusedTask.category).bg, color: getCategoryTheme(focusedTask.category).text }}>
+                    {getCategoryTheme(focusedTask.category).icon} {getCategoryTheme(focusedTask.category).label}
+                  </span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                    focusedTask.priority === 'high' ? 'bg-[#FF5F5F]/15 text-[#FF5F5F]' : focusedTask.priority === 'medium' ? 'bg-[#FFD166]/15 text-[#FFD166]' : 'bg-[#4FFFB0]/15 text-[#4FFFB0]'
+                  }`}>
+                    {focusedTask.priority.toUpperCase()}
+                  </span>
+                </div>
+                <h3 className="text-lg font-bold text-[#E8F4FD] font-syne tracking-tight leading-snug">
+                  {focusedTask.title}
+                </h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setFocusedTask(null)}
+                className="text-[#6B8CAE] hover:text-[#E8F4FD] p-1.5 hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 relative z-10 max-h-[60vh] overflow-y-auto pr-1 custom-scrollbar">
+              {focusedTask.description && (
+                <div className="bg-[#112236]/40 border border-white/5 p-3 rounded-xl text-xs text-[#A0C0E0] leading-relaxed">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE] mb-1">Description</h4>
+                  {focusedTask.description}
+                </div>
+              )}
+
+              {/* Dynamic Urgency / Deadline detail */}
+              <div className="flex items-center justify-between bg-[#112236]/30 border border-white/5 p-3 rounded-xl">
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">Deadline Target</span>
+                  <span className="text-xs text-[#E8F4FD] font-semibold font-mono mt-0.5">
+                    {new Date(focusedTask.deadline).toLocaleDateString('en-IN', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-right text-[#4FFFB0]">
+                    {getUrgencyDetails(focusedTask.deadline).emoji} {getUrgencyDetails(focusedTask.deadline).label}
+                  </span>
+                </div>
+              </div>
+
+              {/* Subtasks checklist inside popup */}
+              <div className="space-y-2 bg-[#112236]/20 border border-white/5 p-4 rounded-xl">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE]">
+                    Interactive Steps ({focusedTask.subtasks?.filter(s => s.completed).length || 0}/{focusedTask.subtasks?.length || 0})
+                  </h4>
+                  {focusedTask.subtasks?.length > 0 && (
+                    <span className="text-xs text-[#4FFFB0] font-mono font-bold">
+                      {Math.round(((focusedTask.subtasks?.filter(s => s.completed).length || 0) / focusedTask.subtasks?.length) * 100)}%
+                    </span>
+                  )}
+                </div>
+
+                {focusedTask.subtasks && focusedTask.subtasks.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    {focusedTask.subtasks.map(s => (
+                      <div
+                        key={s.id}
+                        onClick={(e) => {
+                          handleToggleSubtask(focusedTask.id, s.id, e);
+                          // Update focused task subtask state instantly
+                          setFocusedTask(prev => {
+                            if (!prev) return null;
+                            return {
+                              ...prev,
+                              subtasks: prev.subtasks.map(sub => sub.id === s.id ? { ...sub, completed: !sub.completed } : sub)
+                            };
+                          });
+                        }}
+                        className="flex items-center gap-3 text-xs text-[#E8F4FD] hover:text-[#4FFFB0] bg-white/[0.02] hover:bg-[#1E3355]/30 border border-white/5 px-3 py-2 rounded-lg transition-all cursor-pointer group"
+                      >
+                        {s.completed ? (
+                          <CheckCircle2 className="w-4 h-4 text-[#4FFFB0] flex-shrink-0" />
+                        ) : (
+                          <Circle className="w-4 h-4 text-[#6B8CAE] group-hover:text-[#4FFFB0] flex-shrink-0" />
+                        )}
+                        <span className={`flex-1 ${s.completed ? 'line-through text-[#6B8CAE]' : ''}`}>
+                          {s.title}
+                        </span>
+                        <span className="text-[10px] text-[#6B8CAE] font-mono">{s.duration}m</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-4 text-center">
+                    <p className="text-xs text-[#6B8CAE]">No checklist steps generated yet.</p>
+                    {!focusedTask.completed && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          handleBreakdownTask(focusedTask, e);
+                          setFocusedTask(null); // Close to show chat breakdown progress
+                        }}
+                        className="mt-2 bg-[#4FFFB0]/15 hover:bg-[#4FFFB0]/30 text-[#4FFFB0] border border-[#4FFFB0]/30 text-[11px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <Bot className="w-3.5 h-3.5" /> Deconstruct Task with AI
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Task Properties Editor Form within the focus pop up */}
+              <div className="border-t border-white/5 pt-4 space-y-3">
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-[#6B8CAE]">Quick Modifiers</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] text-[#6B8CAE] uppercase font-bold">Priority</label>
+                    <select
+                      value={focusedTask.priority}
+                      onChange={e => {
+                        const newPri = e.target.value as any;
+                        setTasks(prev => prev.map(t => t.id === focusedTask.id ? { ...t, priority: newPri } : t));
+                        setFocusedTask(prev => prev ? { ...prev, priority: newPri } : null);
+                      }}
+                      className="w-full bg-[#112236] border border-white/10 text-xs text-[#E8F4FD] p-2 rounded-lg outline-none focus:border-[#4FFFB0] transition-colors"
+                    >
+                      <option value="low">Low Priority</option>
+                      <option value="medium">Medium Priority</option>
+                      <option value="high">High Priority</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] text-[#6B8CAE] uppercase font-bold">Category</label>
+                    <select
+                      value={focusedTask.category}
+                      onChange={e => {
+                        const newCat = e.target.value;
+                        setTasks(prev => prev.map(t => t.id === focusedTask.id ? { ...t, category: newCat } : t));
+                        setFocusedTask(prev => prev ? { ...prev, category: newCat } : null);
+                      }}
+                      className="w-full bg-[#112236] border border-white/10 text-xs text-[#E8F4FD] p-2 rounded-lg outline-none focus:border-[#4FFFB0] transition-colors"
+                    >
+                      <option value="work">💼 Work</option>
+                      <option value="study">📚 Study</option>
+                      <option value="personal">🏠 Personal</option>
+                      <option value="health">💪 Health</option>
+                      <option value="finance">💰 Finance</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Footer row */}
+            <div className="flex items-center justify-between border-t border-white/5 pt-4 relative z-10 flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  handleToggleTask(focusedTask.id, e);
+                  setFocusedTask(prev => prev ? { ...prev, completed: !prev.completed } : null);
+                }}
+                className="bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-[#E8F4FD] px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                {focusedTask.completed ? <RotateCcw className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5 text-[#4FFFB0]" />}
+                {focusedTask.completed ? 'Mark Pending' : 'Mark Completed'}
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  handleDeleteTask(focusedTask.id, e);
+                  setFocusedTask(null);
+                }}
+                className="bg-[#FF5F5F]/10 hover:bg-[#FF5F5F]/20 border border-[#FF5F5F]/20 text-xs text-[#FF5F5F] px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete Task
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -1210,6 +1597,8 @@ Here are some helpful recommended actions:
     setSelectedTaskId(id);
     const task = tasks.find(t => t.id === id);
     if (task) {
+      setFocusedTask(task);
+      setMobileSidebarOpen(false);
       analyzeTaskDirectly(task);
     }
   }
