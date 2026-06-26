@@ -28,7 +28,8 @@ import {
   MicOff,
   Search,
   X,
-  Menu
+  Menu,
+  Download
 } from 'lucide-react';
 
 export default function App() {
@@ -220,6 +221,23 @@ What would you like to accomplish first?`,
   }, [chatMessages, isLoading]);
 
   // ============ TASK HANDLING ============
+  const handleExportTasks = () => {
+    try {
+      const dataStr = JSON.stringify(tasks, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `taskpulse_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export tasks:', error);
+    }
+  };
+
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskTitle.trim()) return;
@@ -716,27 +734,28 @@ Here are some helpful recommended actions:
   const completedCount = tasks.filter(t => t.completed).length;
 
   return (
-    <div id="taskpulse-app" className="flex flex-col min-h-screen bg-[#050B1A] text-[#E8F4FD] font-sans selection:bg-[#4FFFB0]/30 relative overflow-hidden">
+    <div id="taskpulse-app" className="flex flex-col min-h-screen bg-[#030712] text-[#E8F4FD] font-sans selection:bg-[#4FFFB0]/30 relative overflow-hidden">
       
-      {/* Liquid Glass ambient background blobs */}
-      <div className="absolute top-1/4 left-1/3 w-72 h-72 rounded-full bg-[#4FFFB0]/10 blur-[100px] pointer-events-none animate-pulse duration-[8s]" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-[#7B61FF]/10 blur-[120px] pointer-events-none animate-pulse duration-[12s]" />
-      <div className="absolute top-1/2 right-1/3 w-80 h-80 rounded-full bg-[#3B82F6]/5 blur-[90px] pointer-events-none animate-pulse duration-[10s]" />
+      {/* Liquid Glass vibrant ambient background refractions */}
+      <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-[#4FFFB0]/15 blur-[120px] pointer-events-none animate-pulse duration-[10s]" />
+      <div className="absolute bottom-[10%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-[#7B61FF]/12 blur-[150px] pointer-events-none animate-pulse duration-[15s]" />
+      <div className="absolute top-[40%] left-[20%] w-[40vw] h-[40vw] rounded-full bg-[#3B82F6]/8 blur-[130px] pointer-events-none animate-pulse duration-[12s]" />
+      <div className="absolute bottom-[40%] right-[30%] w-[35vw] h-[35vw] rounded-full bg-[#FF5F5F]/6 blur-[110px] pointer-events-none animate-pulse duration-[8s]" />
 
       {/* HEADER */}
-      <header id="header" className="bg-[#0D1B2E]/80 backdrop-blur-md border-b border-white/10 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
+      <header id="header" className="bg-white/[0.02] backdrop-blur-xl border-b border-white/10 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-3">
           {/* Mobile hamburger toggle */}
           <button
             type="button"
             onClick={() => setMobileSidebarOpen(prev => !prev)}
-            className="md:hidden p-1.5 rounded-lg bg-[#112236]/80 hover:bg-[#1E3355] border border-white/5 text-[#4FFFB0] hover:text-[#3DEBA0] transition-colors focus:outline-none cursor-pointer"
+            className="md:hidden p-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-[#4FFFB0] hover:text-[#3DEBA0] transition-colors focus:outline-none cursor-pointer"
             title="Toggle Sidebar"
           >
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="w-8 h-8 rounded-full bg-[#4FFFB0] relative flex items-center justify-center shadow-[0_0_15px_rgba(79,255,176,0.3)] animate-pulse">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#4FFFB0] to-[#3B82F6] relative flex items-center justify-center shadow-[0_0_20px_rgba(79,255,176,0.4)] animate-pulse">
             <span className="text-xs">⚡</span>
           </div>
           <span className="font-extrabold text-xl tracking-tight font-syne">
@@ -744,9 +763,9 @@ Here are some helpful recommended actions:
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-[#112236]/60 backdrop-blur-md border border-white/5 px-3.5 py-1.5 rounded-full text-xs">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-ping" />
-            <span className="text-[#4FFFB0] font-medium font-syne">Server Agent Ready</span>
+          <div className="flex items-center gap-2 bg-white/[0.04] backdrop-blur-md border border-white/10 px-3.5 py-1.5 rounded-full text-xs">
+            <span className="w-2 h-2 rounded-full bg-[#4FFFB0] animate-ping" />
+            <span className="text-[#4FFFB0] font-semibold font-syne">Server Agent Ready</span>
           </div>
         </div>
       </header>
@@ -757,7 +776,7 @@ Here are some helpful recommended actions:
         {/* Mobile Sidebar overlay backdrop */}
         {mobileSidebarOpen && (
           <div 
-            className="fixed inset-0 bg-black/60 backdrop-blur-md z-30 md:hidden"
+            className="fixed inset-0 bg-black/40 backdrop-blur-md z-30 md:hidden"
             onClick={() => setMobileSidebarOpen(false)}
           />
         )}
@@ -765,16 +784,26 @@ Here are some helpful recommended actions:
         {/* LEFT PANEL: Task Sidebar */}
         <aside 
           id="sidebar" 
-          className={`bg-[#0D1B2E]/95 md:bg-[#0D1B2E]/60 md:backdrop-blur-xl border-r border-white/5 flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] fixed md:static top-16 bottom-0 left-0 z-40 w-[320px] md:w-auto transition-transform duration-300 transform ${
+          className={`bg-[#030712]/95 md:bg-white/[0.02] md:backdrop-blur-xl border-r border-white/10 flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] fixed md:static top-16 bottom-0 left-0 z-40 w-[320px] md:w-auto transition-transform duration-300 transform ${
             mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
           }`}
         >
           
           {/* Header & Task Creation Form */}
-          <div className="p-5 border-b border-[#1E3355] flex-shrink-0 bg-[#0D1B2E]/95">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#6B8CAE] mb-4 flex items-center gap-2 font-syne">
-              <ClipboardList className="w-4 h-4 text-[#7B61FF]" /> My Tasks
-            </h2>
+          <div className="p-5 border-b border-white/10 flex-shrink-0 bg-transparent">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-[#6B8CAE] flex items-center gap-2 font-syne">
+                <ClipboardList className="w-4 h-4 text-[#7B61FF]" /> My Tasks
+              </h2>
+              <button
+                type="button"
+                onClick={handleExportTasks}
+                className="text-[10px] font-bold uppercase tracking-wide text-[#4FFFB0] hover:text-[#3DEBA0] bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 px-2 py-1 rounded-md flex items-center gap-1 transition-all cursor-pointer shadow-[0_0_10px_rgba(79,255,176,0.05)] hover:shadow-[0_0_15px_rgba(79,255,176,0.15)] focus:outline-none"
+                title="Export tasks to JSON file backup"
+              >
+                <Download className="w-3 h-3 text-[#4FFFB0]" /> Backup JSON
+              </button>
+            </div>
             
             <form onSubmit={handleAddTask} className="flex flex-col gap-3">
               <input
@@ -783,7 +812,7 @@ Here are some helpful recommended actions:
                 value={taskTitle}
                 onChange={e => setTaskTitle(e.target.value)}
                 maxLength={100}
-                className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] px-4 py-2.5 rounded-lg text-sm outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] transition-colors"
+                className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] px-4 py-2.5 rounded-lg text-sm outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all"
               />
               
               <textarea
@@ -791,7 +820,7 @@ Here are some helpful recommended actions:
                 value={taskDesc}
                 onChange={e => setTaskDesc(e.target.value)}
                 maxLength={300}
-                className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] px-4 py-2 rounded-lg text-xs outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] transition-colors resize-none h-14"
+                className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] px-4 py-2 rounded-lg text-xs outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all resize-none h-14"
               />
 
               <div className="grid grid-cols-2 gap-2">
@@ -801,7 +830,7 @@ Here are some helpful recommended actions:
                     type="datetime-local"
                     value={taskDeadline}
                     onChange={e => setTaskDeadline(e.target.value)}
-                    className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] transition-colors"
+                    className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -809,13 +838,13 @@ Here are some helpful recommended actions:
                   <select
                     value={taskCategory}
                     onChange={e => setTaskCategory(e.target.value)}
-                    className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] transition-colors"
+                    className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all cursor-pointer"
                   >
-                    <option value="work">💼 Work</option>
-                    <option value="study">📚 Study</option>
-                    <option value="personal">🏠 Personal</option>
-                    <option value="health">💪 Health</option>
-                    <option value="finance">💰 Finance</option>
+                    <option value="work" className="bg-[#0D1B2E] text-[#E8F4FD]">💼 Work</option>
+                    <option value="study" className="bg-[#0D1B2E] text-[#E8F4FD]">📚 Study</option>
+                    <option value="personal" className="bg-[#0D1B2E] text-[#E8F4FD]">🏠 Personal</option>
+                    <option value="health" className="bg-[#0D1B2E] text-[#E8F4FD]">💪 Health</option>
+                    <option value="finance" className="bg-[#0D1B2E] text-[#E8F4FD]">💰 Finance</option>
                   </select>
                 </div>
               </div>
@@ -826,11 +855,11 @@ Here are some helpful recommended actions:
                   <select
                     value={taskPriority}
                     onChange={e => setTaskPriority(e.target.value as any)}
-                    className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] transition-colors"
+                    className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all cursor-pointer"
                   >
-                    <option value="low">🟢 Low</option>
-                    <option value="medium">🟡 Medium</option>
-                    <option value="high">🔴 High</option>
+                    <option value="low" className="bg-[#0D1B2E] text-[#E8F4FD]">🟢 Low</option>
+                    <option value="medium" className="bg-[#0D1B2E] text-[#E8F4FD]">🟡 Medium</option>
+                    <option value="high" className="bg-[#0D1B2E] text-[#E8F4FD]">🔴 High</option>
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -838,14 +867,14 @@ Here are some helpful recommended actions:
                   <select
                     value={taskDuration}
                     onChange={e => setTaskDuration(Number(e.target.value))}
-                    className="w-full bg-[#112236] border border-[#1E3355] text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] transition-colors"
+                    className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] p-2 rounded-lg text-xs outline-none focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all cursor-pointer"
                   >
-                    <option value={15}>15 min</option>
-                    <option value={30}>30 min</option>
-                    <option value={45}>45 min</option>
-                    <option value={60}>60 min</option>
-                    <option value={90}>90 min</option>
-                    <option value={120}>120 min</option>
+                    <option value={15} className="bg-[#0D1B2E] text-[#E8F4FD]">15 min</option>
+                    <option value={30} className="bg-[#0D1B2E] text-[#E8F4FD]">30 min</option>
+                    <option value={45} className="bg-[#0D1B2E] text-[#E8F4FD]">45 min</option>
+                    <option value={60} className="bg-[#0D1B2E] text-[#E8F4FD]">60 min</option>
+                    <option value={90} className="bg-[#0D1B2E] text-[#E8F4FD]">90 min</option>
+                    <option value={120} className="bg-[#0D1B2E] text-[#E8F4FD]">120 min</option>
                   </select>
                 </div>
               </div>
@@ -860,7 +889,7 @@ Here are some helpful recommended actions:
                 <button
                   type="button"
                   onClick={handlePlanDay}
-                  className="bg-[#112236] hover:bg-[#1E3355] border border-[#1E3355] text-[#4FFFB0] hover:text-[#3DEBA0] text-xs py-2 px-3 rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5 font-medium"
+                  className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-[#4FFFB0] hover:text-[#3DEBA0] text-xs py-2 px-3 rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5 font-medium cursor-pointer"
                   title="Generate a smart daily planner schedule with AI"
                 >
                   <Calendar className="w-3.5 h-3.5" /> Plan Day
@@ -870,7 +899,7 @@ Here are some helpful recommended actions:
           </div>
 
           {/* Search bar */}
-          <div className="px-5 py-3 border-b border-[#1E3355]/40 bg-[#0D1B2E]/40 flex items-center gap-2 flex-shrink-0">
+          <div className="px-5 py-3 border-b border-white/10 bg-transparent flex items-center gap-2 flex-shrink-0">
             <div className="relative w-full">
               <Search className="w-4 h-4 text-[#6B8CAE] absolute left-3 top-2.5" />
               <input
@@ -878,7 +907,7 @@ Here are some helpful recommended actions:
                 placeholder="Search tasks by title or details..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-[#112236]/60 backdrop-blur-md border border-[#1E3355]/80 text-[#E8F4FD] pl-9 pr-8 py-1.5 rounded-lg text-xs outline-none focus:border-[#4FFFB0] transition-all placeholder:text-[#6B8CAE]"
+                className="w-full bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] pl-9 pr-8 py-1.5 rounded-lg text-xs outline-none focus:border-[#4FFFB0] focus:bg-white/[0.06] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all placeholder:text-[#6B8CAE]"
               />
               {searchQuery && (
                 <button
@@ -945,8 +974,8 @@ Here are some helpful recommended actions:
                     <div
                       key={task.id}
                       onClick={() => selectTaskDirectly(task.id)}
-                      className={`relative bg-[#0A1628] border rounded-xl p-4 cursor-pointer transition-all duration-200 group flex flex-col gap-3 hover:translate-x-0.5 ${
-                        task.completed ? 'border-[#1E3355]/40 opacity-60' : isSelected ? 'border-[#4FFFB0] bg-[#0A1628]/90' : 'border-[#1E3355] hover:border-[#4FFFB0]/60'
+                      className={`relative bg-white/[0.02] backdrop-blur-md border rounded-xl p-4 cursor-pointer transition-all duration-200 group flex flex-col gap-3 hover:translate-x-0.5 ${
+                        task.completed ? 'border-white/5 opacity-50 bg-white/[0.005]' : isSelected ? 'border-[#4FFFB0]/80 bg-white/[0.06] shadow-[0_0_25px_rgba(79,255,176,0.12)]' : 'border-white/10 hover:border-white/20 hover:bg-white/[0.04]'
                       }`}
                     >
                       {/* Accent strip */}
@@ -964,7 +993,7 @@ Here are some helpful recommended actions:
 
                           {/* Est. Duration vs Day Remaining Progress Bar */}
                           <div className="flex flex-col gap-1 mt-0.5">
-                            <div className="w-full bg-[#112236]/80 rounded-full h-1 overflow-hidden border border-white/5 relative" title={`${task.estimatedDuration}m is ${durationPercent}% of remaining day (${formattedRemaining} left)`}>
+                            <div className="w-full bg-white/[0.08] rounded-full h-1 overflow-hidden border border-white/5 relative" title={`${task.estimatedDuration}m is ${durationPercent}% of remaining day (${formattedRemaining} left)`}>
                               <div 
                                 className={`h-full rounded-full transition-all duration-500 ${task.completed ? 'bg-[#6B8CAE]/50' : 'bg-gradient-to-r from-[#4FFFB0] to-[#3B82F6]'}`}
                                 style={{ width: `${durationPercent}%` }}
@@ -987,7 +1016,7 @@ Here are some helpful recommended actions:
 
                       {/* Interactive Subtasks list (Rich feature block) */}
                       {task.subtasks && task.subtasks.length > 0 && (
-                        <div className="pl-1.5 border-l border-[#1E3355]/50 ml-2 py-1 flex flex-col gap-2 bg-[#112236]/30 p-2 rounded-lg">
+                        <div className="pl-1.5 border-l border-white/10 ml-2 py-1 flex flex-col gap-2 bg-white/[0.03] border border-white/5 p-2 rounded-lg">
                           <div className="text-[10px] font-bold text-[#6B8CAE] uppercase tracking-wider mb-1 flex items-center justify-between">
                             <span>Steps ({task.subtasks.filter(s => s.completed).length}/{task.subtasks.length})</span>
                             <span className="text-xs text-[#4FFFB0] font-mono">{Math.round((task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100)}%</span>
@@ -1033,10 +1062,10 @@ Here are some helpful recommended actions:
                       </div>
 
                       {/* Action buttons */}
-                      <div className="flex items-center justify-between pt-2 border-t border-[#1E3355]/40 pl-1.5 mt-1">
+                      <div className="flex items-center justify-between pt-2 border-t border-white/10 pl-1.5 mt-1">
                         <button
                           onClick={(e) => handleToggleTask(task.id, e)}
-                          className="text-xs text-[#6B8CAE] hover:text-[#4FFFB0] transition-colors flex items-center gap-1 bg-[#112236] hover:bg-[#1E3355] px-2.5 py-1 rounded-md border border-[#1E3355]"
+                          className="text-xs text-[#6B8CAE] hover:text-[#4FFFB0] transition-colors flex items-center gap-1 bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 px-2.5 py-1 rounded-md cursor-pointer"
                         >
                           {task.completed ? <RotateCcw className="w-3 h-3" /> : <Check className="w-3 h-3 text-[#4FFFB0]" />}
                           {task.completed ? 'Undo' : 'Complete'}
@@ -1046,7 +1075,7 @@ Here are some helpful recommended actions:
                           {!task.completed && task.subtasks.length === 0 && (
                             <button
                               onClick={(e) => handleBreakdownTask(task, e)}
-                              className="text-[11px] text-[#4FFFB0] hover:text-[#3DEBA0] transition-colors flex items-center gap-1 bg-[#112236]/80 hover:bg-[#1E3355] px-2 py-1 rounded-md border border-[#1E3355]"
+                              className="text-[11px] text-[#4FFFB0] hover:text-[#3DEBA0] transition-colors flex items-center gap-1 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 px-2 py-1 rounded-md cursor-pointer"
                               title="Use TaskPulse's local cognitive engine to break this task down into bite-sized actionable checklists"
                             >
                               <Bot className="w-3 h-3" /> Break down
@@ -1054,7 +1083,7 @@ Here are some helpful recommended actions:
                           )}
                           <button
                             onClick={(e) => handleDeleteTask(task.id, e)}
-                            className="text-xs text-[#6B8CAE] hover:text-[#FF5F5F] transition-colors p-1 hover:bg-[#FF5F5F]/10 rounded-md"
+                            className="text-xs text-[#6B8CAE] hover:text-[#FF5F5F] transition-colors p-1 hover:bg-[#FF5F5F]/10 rounded-md cursor-pointer"
                             title="Delete task"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1068,12 +1097,12 @@ Here are some helpful recommended actions:
           </div>
 
           {/* Footer Stats summary info */}
-          <div id="stats-summary" className="p-4 border-t border-[#1E3355] bg-[#0A1628] flex-shrink-0 grid grid-cols-3 gap-2 text-center">
+          <div id="stats-summary" className="p-4 border-t border-white/10 bg-transparent flex-shrink-0 grid grid-cols-3 gap-2 text-center">
             <div className="flex flex-col">
               <span className="text-base font-extrabold text-[#FF5F5F] font-syne">{overdueCount}</span>
-              <span className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">🚨 Overdue</span>
+               <span className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">🚨 Overdue</span>
             </div>
-            <div className="flex flex-col border-x border-[#1E3355]">
+            <div className="flex flex-col border-x border-white/10">
               <span className="text-base font-extrabold text-[#4FFFB0] font-syne">{pendingCount}</span>
               <span className="text-[10px] text-[#6B8CAE] font-medium uppercase tracking-wider">⏳ Pending</span>
             </div>
@@ -1085,10 +1114,10 @@ Here are some helpful recommended actions:
         </aside>
 
         {/* RIGHT PANEL: Main Tab Area */}
-        <main id="main-content" className="flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)]">
+        <main id="main-content" className="flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] bg-transparent">
           
           {/* Main Panel Header Banner */}
-          <div className="px-6 py-4 border-b border-[#1E3355] bg-[#0D1B2E] flex items-center justify-between flex-shrink-0">
+          <div className="px-6 py-4 border-b border-white/10 bg-white/[0.02] backdrop-blur-md flex items-center justify-between flex-shrink-0">
             <div>
               <h1 className="text-lg font-bold text-[#E8F4FD] font-syne flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-[#4FFFB0]" /> TaskPulse AI Agent
@@ -1102,7 +1131,7 @@ Here are some helpful recommended actions:
             <div className="flex items-center gap-2">
               <button
                 onClick={handleFullAnalysis}
-                className="bg-gradient-to-r from-[#7B61FF] to-[#5B41FF] hover:from-[#6B51EF] hover:to-[#4B31EF] text-white text-xs font-bold py-1.5 px-3 rounded-lg shadow-lg shadow-[#7B61FF]/10 transition-all flex items-center gap-1"
+                className="bg-gradient-to-r from-[#7B61FF] to-[#5B41FF] hover:from-[#6B51EF] hover:to-[#4B31EF] text-white text-xs font-bold py-1.5 px-3 rounded-lg shadow-lg shadow-[#7B61FF]/10 transition-all flex items-center gap-1 cursor-pointer"
                 title="Get full workload analysis"
               >
                 <Flame className="w-3.5 h-3.5 text-[#4FFFB0]" /> Workload Analysis
@@ -1111,12 +1140,12 @@ Here are some helpful recommended actions:
           </div>
 
           {/* Top Progress Loading Shimmer */}
-          <div className={`h-0.5 w-full bg-[#1E3355] relative overflow-hidden flex-shrink-0 ${agentStatus === 'thinking' ? 'block' : 'hidden'}`}>
+          <div className={`h-0.5 w-full bg-white/10 relative overflow-hidden flex-shrink-0 ${agentStatus === 'thinking' ? 'block' : 'hidden'}`}>
             <div className="absolute top-0 bottom-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-[#4FFFB0] to-transparent animate-shimmer" />
           </div>
 
           {/* Navigation Tabs */}
-          <div className="px-6 border-b border-[#1E3355] bg-[#0D1B2E] flex gap-2 flex-shrink-0">
+          <div className="px-6 border-b border-white/10 bg-white/[0.01] backdrop-blur-md flex gap-2 flex-shrink-0">
             <button
               onClick={() => setActiveTab('chat')}
               className={`py-3 px-4 text-xs font-semibold tracking-wide border-b-2 transition-all cursor-pointer font-syne ${
@@ -1144,7 +1173,7 @@ Here are some helpful recommended actions:
           </div>
 
           {/* VIEWPORT AREA */}
-          <div className="flex-1 overflow-hidden relative flex flex-col bg-[#050B1A]">
+          <div className="flex-1 overflow-hidden relative flex flex-col bg-transparent backdrop-blur-xl">
             
             {/* 1. CHAT VIEW */}
             <div className={`flex-1 flex flex-col overflow-hidden ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
@@ -1156,7 +1185,7 @@ Here are some helpful recommended actions:
                   >
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 font-bold border ${
                       msg.sender === 'user'
-                        ? 'bg-[#112236] border-[#1E3355] text-[#E8F4FD]'
+                        ? 'bg-white/[0.05] border-white/10 text-[#E8F4FD]'
                         : 'bg-gradient-to-tr from-[#7B61FF] to-[#4FFFB0] border-transparent text-[#050B1A]'
                     }`}>
                       {msg.sender === 'user' ? '👤' : '⚡'}
@@ -1164,8 +1193,8 @@ Here are some helpful recommended actions:
                     
                     <div className={`rounded-xl p-4 text-sm shadow-md border leading-relaxed ${
                       msg.sender === 'user'
-                        ? 'bg-[#112236] border-[#4FFFB0]/30 text-[#E8F4FD]'
-                        : 'bg-[#0D1B2E] border-[#1E3355] text-[#E8F4FD]'
+                        ? 'bg-white/[0.08] border-white/15 text-[#E8F4FD]'
+                        : 'bg-white/[0.03] border-white/10 text-[#E8F4FD]'
                     }`}>
                       {msg.sender === 'ai' ? formatText(msg.text) : <p className="text-sm">{msg.text}</p>}
                     </div>
@@ -1177,7 +1206,7 @@ Here are some helpful recommended actions:
                     <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs bg-gradient-to-tr from-[#7B61FF] to-[#4FFFB0] text-[#050B1A] font-bold">
                       ⚡
                     </div>
-                    <div className="bg-[#0D1B2E] border border-[#1E3355] rounded-xl p-4 flex items-center gap-1.5 shadow-md">
+                    <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 flex items-center gap-1.5 shadow-md">
                       <div className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-bounce" />
                       <div className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-bounce [animation-delay:0.2s]" />
                       <div className="w-2.5 h-2.5 rounded-full bg-[#4FFFB0] animate-bounce [animation-delay:0.4s]" />
@@ -1188,30 +1217,30 @@ Here are some helpful recommended actions:
               </div>
 
               {/* Chat Form Footer */}
-              <div className="p-5 border-t border-[#1E3355] bg-[#0D1B2E]/95 flex flex-col gap-3">
+              <div className="p-5 border-t border-white/10 bg-transparent flex flex-col gap-3">
                 {/* Prompt suggestion buttons */}
                 <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar scrollbar-none flex-wrap">
                   <button
                     onClick={() => { setChatInput('Prioritize all my tasks by deadline and risk'); }}
-                    className="bg-[#112236] hover:bg-[#1E3355] border border-[#1E3355] hover:border-[#4FFFB0]/40 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
+                    className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
                   >
                     🎯 Prioritize workload
                   </button>
                   <button
                     onClick={() => { setChatInput('What should I work on right now?'); }}
-                    className="bg-[#112236] hover:bg-[#1E3355] border border-[#1E3355] hover:border-[#4FFFB0]/40 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
+                    className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
                   >
                     ⚡ What now?
                   </button>
                   <button
                     onClick={() => { setChatInput('I feel overwhelmed. Help me focus and build a calm action plan.'); }}
-                    className="bg-[#112236] hover:bg-[#1E3355] border border-[#1E3355] hover:border-[#4FFFB0]/40 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
+                    className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
                   >
-                    😰 Help, I\'m overwhelmed
+                    😰 Help, I'm overwhelmed
                   </button>
                   <button
                     onClick={() => { setChatInput('Draft an hour-by-hour planner with rest stops for today.'); }}
-                    className="bg-[#112236] hover:bg-[#1E3355] border border-[#1E3355] hover:border-[#4FFFB0]/40 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
+                    className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#E8F4FD] text-[11px] font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap cursor-pointer"
                   >
                     📅 Build schedule
                   </button>
@@ -1224,7 +1253,7 @@ Here are some helpful recommended actions:
                     onChange={e => setChatInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
                     placeholder="Ask your AI agent to organize, breakdown, or plan your tasks..."
-                    className="flex-1 bg-[#112236] border border-[#1E3355] text-[#E8F4FD] px-4 py-3 rounded-lg text-sm outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] transition-colors resize-none max-h-24"
+                    className="flex-1 bg-white/[0.03] backdrop-blur-md border border-white/10 text-[#E8F4FD] px-4 py-3 rounded-lg text-sm outline-none placeholder:text-[#6B8CAE] focus:border-[#4FFFB0] focus:bg-white/[0.08] focus:ring-1 focus:ring-[#4FFFB0]/30 transition-all resize-none max-h-24"
                   />
                   <button
                     type="button"
@@ -1240,7 +1269,7 @@ Here are some helpful recommended actions:
                     className={`w-11 h-11 rounded-lg flex items-center justify-center transition-all border flex-shrink-0 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
                       isListening
                         ? 'bg-[#FF4F4F] hover:bg-[#E03D3D] border-[#FF4F4F] text-[#E8F4FD] animate-pulse shadow-[0_0_15px_rgba(255,79,79,0.4)]'
-                        : 'bg-[#112236] hover:bg-[#1E3355] border-[#1E3355] hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#4FFFB0]'
+                        : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/10 hover:border-[#4FFFB0]/30 text-[#6B8CAE] hover:text-[#4FFFB0]'
                     }`}
                   >
                     {isListening ? (
@@ -1271,7 +1300,7 @@ Here are some helpful recommended actions:
                 </div>
                 <button
                   onClick={handlePlanDay}
-                  className="bg-[#112236] hover:bg-[#1E3355] text-[#4FFFB0] hover:text-[#3DEBA0] border border-[#1E3355] text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all"
+                  className="bg-white/[0.04] hover:bg-white/[0.08] text-[#4FFFB0] hover:text-[#3DEBA0] border border-white/10 text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '3s' }} /> Regenerate Schedule
                 </button>
@@ -1280,7 +1309,7 @@ Here are some helpful recommended actions:
               {scheduleData ? (
                 <div className="flex flex-col gap-6">
                   {scheduleData.advice && (
-                    <div className="bg-[#112236] border border-[#1E3355] p-4 rounded-xl flex gap-3 items-start leading-relaxed text-sm">
+                    <div className="bg-white/[0.03] backdrop-blur-md border border-white/10 p-4 rounded-xl flex gap-3 items-start leading-relaxed text-sm">
                       <Brain className="w-5 h-5 text-[#4FFFB0] flex-shrink-0 mt-0.5" />
                       <div>
                         <strong className="text-[#4FFFB0] block mb-0.5 font-syne text-xs uppercase tracking-wider">AI Strategist Advice</strong>
@@ -1290,16 +1319,16 @@ Here are some helpful recommended actions:
                   )}
 
                   {scheduleData.days?.map((day, dIdx) => (
-                    <div key={dIdx} className="bg-[#0D1B2E] border border-[#1E3355] rounded-xl overflow-hidden shadow-md">
-                      <div className="bg-[#112236] border-b border-[#1E3355] px-4 py-3 font-syne font-bold text-xs uppercase tracking-wider text-[#4FFFB0]">
+                    <div key={dIdx} className="bg-white/[0.02] backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-md">
+                      <div className="bg-white/[0.04] border-b border-white/10 px-4 py-3 font-syne font-bold text-xs uppercase tracking-wider text-[#4FFFB0]">
                         {day.label}
                       </div>
                       
-                      <div className="divide-y divide-[#1E3355]/40">
+                      <div className="divide-y divide-white/5">
                         {day.slots?.map((slot, sIdx) => {
                           const isBreak = slot.task.toLowerCase().includes('break') || slot.task.toLowerCase().includes('lunch') || slot.task.toLowerCase().includes('recharge');
                           return (
-                            <div key={sIdx} className="p-4 flex items-start gap-4 transition-colors hover:bg-[#112236]/20">
+                            <div key={sIdx} className="p-4 flex items-start gap-4 transition-colors hover:bg-white/[0.03]">
                               <div className="w-20 flex-shrink-0">
                                 <span className="text-xs font-semibold text-[#4FFFB0] font-mono">{slot.time}</span>
                                 <span className="block text-[10px] text-[#6B8CAE] mt-0.5 font-mono">{slot.duration}</span>
@@ -1321,7 +1350,7 @@ Here are some helpful recommended actions:
                   <span className="text-4xl mb-4">📅</span>
                   <p className="text-sm font-semibold text-[#E8F4FD] font-syne">No Schedule Prepared Yet</p>
                   <p className="text-xs text-[#6B8CAE] mt-1 max-w-sm">
-                    Click "Plan Day" to parse your custom task stack and construct an optimized, high-performance hourly schedule.
+                    Click \"Plan Day\" to parse your custom task stack and construct an optimized, high-performance hourly schedule.
                   </p>
                   <button
                     onClick={handlePlanDay}
@@ -1344,7 +1373,7 @@ Here are some helpful recommended actions:
                 </div>
                 <button
                   onClick={handleFullAnalysis}
-                  className="bg-[#112236] hover:bg-[#1E3355] text-[#4FFFB0] hover:text-[#3DEBA0] border border-[#1E3355] text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all"
+                  className="bg-white/[0.04] hover:bg-white/[0.08] text-[#4FFFB0] hover:text-[#3DEBA0] border border-white/10 text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" /> Re-Analyze Workload
                 </button>
@@ -1353,7 +1382,7 @@ Here are some helpful recommended actions:
               {insights.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {insights.map((ins, idx) => (
-                    <div key={idx} className="bg-[#0D1B2E] border border-[#1E3355] rounded-xl p-5 shadow-sm transition-all hover:border-[#4FFFB0]/30 flex flex-col gap-3">
+                    <div key={idx} className="bg-white/[0.02] backdrop-blur-md border border-white/10 rounded-xl p-5 shadow-sm transition-all hover:border-[#4FFFB0]/30 flex flex-col gap-3">
                       <div className="flex items-center justify-between">
                         <span className="text-2xl">{ins.icon}</span>
                         <span className="text-[10px] font-bold text-[#6B8CAE] uppercase tracking-wider font-mono">Insight #{idx + 1}</span>
