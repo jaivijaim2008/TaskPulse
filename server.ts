@@ -643,7 +643,7 @@ If the user asks you to "organize", "add", "schedule", or "track" a task in chat
     });
 
     const responseStream = await ai.models.generateContentStream({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: contents,
       config: {
         systemInstruction: systemInstruction,
@@ -734,7 +734,7 @@ You MUST return the response ONLY as a JSON array with the following schema:
 Do not include any extra text, preamble, or markdown code blocks (like \`\`\`json). Just the raw valid JSON array.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: prompt,
       config: {
         temperature: 0.3,
@@ -811,7 +811,7 @@ You MUST return the schedule ONLY as a valid JSON object matching the following 
 Do not include any extra text or markdown wrapping. Just return raw valid JSON.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: prompt,
       config: {
         temperature: 0.4,
@@ -873,7 +873,7 @@ You MUST return the insights ONLY as a valid JSON object matching the following 
 Only return raw valid JSON. Do not include markdown wraps or preambles.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: prompt,
       config: {
         temperature: 0.5,
@@ -929,7 +929,7 @@ app.get('/api/key-check', async (req, res) => {
 
     // Try a simple ping content request
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: 'Ping: Reply with "pong"',
       config: {
         maxOutputTokens: 10,
@@ -961,7 +961,7 @@ app.get('/api/key-check', async (req, res) => {
       configured: true,
       status: isQuotaError ? 'quota_exceeded' : 'error',
       message: isQuotaError 
-        ? `Your Gemini API Key is valid, but it has exceeded the daily or minute rate limits on the free tier (20 requests/day for gemini-2.5-flash). Please wait for the quota to reset, or update your billing plan in AI Studio.`
+        ? `Your Gemini API Key is valid, but it has exceeded the daily or minute rate limits on the free tier (15 RPM / 1,500 RPD for gemini-1.5-flash). Please wait for the quota to reset, or update your billing plan in AI Studio.`
         : `The API key was found but the verification request returned an error: ${err.message}`,
       error_details: err.stack || err.toString(),
       diagnostics: {
