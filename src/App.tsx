@@ -1577,6 +1577,7 @@ export default function App() {
               <InsightsPanel
                 insights={insights}
                 handleFullAnalysis={handleFullAnalysis}
+                tasks={tasks}
               />
             </div>
 
