@@ -124,6 +124,12 @@ export default function App() {
   const [insights, setInsights] = useState<InsightItem[]>([]);
   const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking'>('idle');
 
+  // Quota usage states
+  const [quotaData, setQuotaData] = useState<{
+    minutePercent: number; dailyPercent: number; minuteUsage: string; dailyUsage: string;
+    totalKeys: number; exhaustedKeys: number; hasOpenAI: boolean; canMakeRequest: boolean;
+  } | null>(null);
+
   // Web Speech API states
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
@@ -249,6 +255,19 @@ export default function App() {
           message: 'Failed to query API diagnostics from developer server. Offline simulation activated.'
         });
       });
+  }, []);
+
+  // Poll quota status every 15 seconds
+  useEffect(() => {
+    const fetchQuota = () => {
+      fetch('/api/quota-status')
+        .then(res => res.json())
+        .then(data => setQuotaData(data))
+        .catch(() => {});
+    };
+    fetchQuota();
+    const interval = setInterval(fetchQuota, 15_000);
+    return () => clearInterval(interval);
   }, []);
 
   const toggleListening = React.useCallback(() => {
@@ -891,6 +910,32 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Quota Usage Indicator */}
+          {quotaData && (apiKeyStatus?.status === 'working' || quotaData.totalKeys > 0) && (
+            <div
+              className="flex items-center gap-2 bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-full text-xs cursor-pointer hover:border-emerald-500/30 transition-all"
+              title={`Daily: ${quotaData.dailyUsage} (${quotaData.dailyPercent}%)\nMinute: ${quotaData.minuteUsage} (${quotaData.minutePercent}%)\nKeys: ${quotaData.totalKeys - quotaData.exhaustedKeys}/${quotaData.totalKeys} available${quotaData.hasOpenAI ? '\nOpenAI: Connected' : ''}`}
+              onClick={() => alert(`API Quota Usage:\n\nDaily: ${quotaData.dailyUsage} (${quotaData.dailyPercent}%)\nMinute: ${quotaData.minuteUsage} (${quotaData.minutePercent}%)\n\nKey Rotation: ${quotaData.totalKeys - quotaData.exhaustedKeys}/${quotaData.totalKeys} keys available\nOpenAI Fallback: ${quotaData.hasOpenAI ? 'Connected' : 'Not configured'}\nCache: ${quotaData.cacheSize} entries cached`)}
+            >
+              <div className="relative w-8 h-2 rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className={`absolute left-0 top-0 h-full rounded-full transition-all duration-500 ${
+                    quotaData.dailyPercent > 80 ? 'bg-rose-500' :
+                    quotaData.dailyPercent > 50 ? 'bg-amber-500' : 'bg-emerald-500'
+                  }`}
+                  style={{ width: `${Math.min(quotaData.dailyPercent, 100)}%` }}
+                />
+              </div>
+              <span className={`font-bold ${
+                quotaData.dailyPercent > 80 ? 'text-rose-400' :
+                quotaData.dailyPercent > 50 ? 'text-amber-400' : 'text-emerald-400'
+              }`}>{quotaData.dailyPercent}%</span>
+              {quotaData.exhaustedKeys > 0 && (
+                <span className="text-rose-400 text-[9px] font-bold">🔑{quotaData.totalKeys - quotaData.exhaustedKeys}</span>
+              )}
+            </div>
+          )}
+
           {pendingCount > 0 && (
             <button
               onClick={() => setShowUnfinishedModal(true)}
