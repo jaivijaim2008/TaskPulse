@@ -91,6 +91,20 @@ const triggerVibration = () => {
   }
 };
 
+// ============ DATE HELPERS FOR STREAK & HABITS ============
+const getLocalDateString = (d: Date = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getYesterdayDateString = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return getLocalDateString(d);
+};
+
 export default function App() {
   // ============ STATE ============
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -102,6 +116,7 @@ export default function App() {
   const [taskCategory, setTaskCategory] = useState('work');
   const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [taskDuration, setTaskDuration] = useState(30);
+  const [taskRecurring, setTaskRecurring] = useState<'none' | 'daily' | 'weekly'>('none');
 
   // Search & Mobile & Popup States
   const [searchQuery, setSearchQuery] = useState('');
@@ -140,23 +155,85 @@ export default function App() {
   useEffect(() => {
     // Load tasks from localStorage with safe fallback guards
     const savedTasks = localStorage.getItem('tp_tasks');
+    let loadedTasks: Task[] = [];
     if (savedTasks) {
       try {
         const parsed = JSON.parse(savedTasks);
         if (Array.isArray(parsed)) {
-          setTasks(parsed);
-        } else {
-          setTasks([]);
+          loadedTasks = parsed;
         }
       } catch (e) {
         console.error('Error parsing saved tasks:', e);
-        setTasks([]);
+      }
+    }
+
+    const now = new Date();
+    const yesterdayStr = getYesterdayDateString();
+    const currentDate = getLocalDateString();
+
+    if (loadedTasks.length > 0) {
+      // Habit sweep & streak auto-resets on day transitions
+      let hasChanges = false;
+      const sweptTasks = loadedTasks.map(t => {
+        if (t.recurring === 'daily') {
+          // If task is completed and the last completion was NOT today, reset completed to false for the new day
+          if (t.completed && t.lastCompletedDate !== currentDate) {
+            hasChanges = true;
+            // Check if they missed yesterday to maintain/break streak
+            let nextStreak = t.streak || 0;
+            if (t.lastCompletedDate !== yesterdayStr) {
+              nextStreak = 0; // missed yesterday, streak broken on new day
+            }
+            return {
+              ...t,
+              completed: false,
+              streak: nextStreak
+            };
+          }
+          // If NOT completed, but today is a new day and they missed yesterday, reset streak to 0
+          if (!t.completed && t.lastCompletedDate !== currentDate && t.lastCompletedDate !== yesterdayStr && (t.streak || 0) > 0) {
+            hasChanges = true;
+            return {
+              ...t,
+              streak: 0
+            };
+          }
+        } else if (t.recurring === 'weekly') {
+          if (t.completed && t.lastCompletedDate) {
+            try {
+              const lastDate = new Date(t.lastCompletedDate);
+              const diffTime = Math.abs(now.getTime() - lastDate.getTime());
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+              if (diffDays >= 7) {
+                hasChanges = true;
+                let nextStreak = t.streak || 0;
+                if (diffDays > 14) {
+                  nextStreak = 0; // missed a whole week, streak broken
+                }
+                return {
+                  ...t,
+                  completed: false,
+                  streak: nextStreak
+                };
+              }
+            } catch (err) {
+              console.error('Error checking weekly task duration:', err);
+            }
+          }
+        }
+        return t;
+      });
+
+      if (hasChanges) {
+        setTasks(sweptTasks);
+        localStorage.setItem('tp_tasks', JSON.stringify(sweptTasks));
+      } else {
+        setTasks(loadedTasks);
       }
     } else {
       // Load premium default sample tasks if it is first visit
-      const now = new Date();
       const d1 = new Date(now); d1.setHours(d1.getHours() + 6);
-      const d2 = new Date(now); d2.setDate(d2.getDate() + 1);
+      const d2 = new Date(now); d2.setHours(d2.getHours() + 12);
       const d3 = new Date(now); d3.setDate(d3.getDate() + 3);
 
       const defaultTasks: Task[] = [
@@ -175,20 +252,24 @@ export default function App() {
             { id: 'sub-1-3', title: 'Run deploy script', completed: false, duration: 30 }
           ],
           createdAt: now.toISOString(),
-          position: 0
+          position: 0,
+          recurring: 'none'
         },
         {
           id: '2',
-          title: 'Complete Project Documentation',
-          description: 'Draft the technical overview, design concepts, and integration guides.',
+          title: 'Daily Coding Habit',
+          description: 'Solve one coding challenge and commit to main repository.',
           deadline: d2.toISOString(),
           category: 'study',
           priority: 'medium',
           completed: false,
-          estimatedDuration: 45,
+          estimatedDuration: 30,
           subtasks: [],
           createdAt: now.toISOString(),
-          position: 1
+          position: 1,
+          recurring: 'daily',
+          streak: 4,
+          lastCompletedDate: yesterdayStr
         },
         {
           id: '3',
@@ -201,7 +282,8 @@ export default function App() {
           estimatedDuration: 90,
           subtasks: [],
           createdAt: now.toISOString(),
-          position: 2
+          position: 2,
+          recurring: 'none'
         }
       ];
       setTasks(defaultTasks);
@@ -350,7 +432,9 @@ export default function App() {
       estimatedDuration: taskDuration,
       subtasks: [],
       createdAt: new Date().toISOString(),
-      position: 0
+      position: 0,
+      recurring: taskRecurring,
+      streak: 0
     };
 
     const currentTasks = Array.isArray(tasks) ? tasks : [];
@@ -364,11 +448,12 @@ export default function App() {
     setTaskTitle('');
     setTaskDesc('');
     setMobileSidebarOpen(false);
+    setTaskRecurring('none');
     
     // Auto-select and focus newly created task instantly
     setSelectedTaskId(newTask.id);
     setFocusedTask(newTask);
-  }, [taskTitle, taskDesc, taskDeadline, taskCategory, taskPriority, taskDuration, tasks]);
+  }, [taskTitle, taskDesc, taskDeadline, taskCategory, taskPriority, taskDuration, taskRecurring, tasks]);
 
   const handleDeleteTask = React.useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -384,12 +469,64 @@ export default function App() {
   const handleToggleTask = React.useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const currentTasks = Array.isArray(tasks) ? tasks : [];
+    const currentDate = getLocalDateString();
+    const yesterdayDate = getYesterdayDateString();
+
     const updated = currentTasks.map(t => {
       if (t.id === id) {
         const nextVal = !t.completed;
         if (nextVal) {
           playCompletionSound();
           triggerVibration();
+
+          if (t.recurring === 'daily') {
+            let nextStreak = t.streak || 0;
+            if (t.lastCompletedDate === yesterdayDate) {
+              nextStreak += 1;
+            } else if (t.lastCompletedDate !== currentDate) {
+              nextStreak = 1;
+            }
+            return {
+              ...t,
+              completed: nextVal,
+              streak: nextStreak,
+              lastCompletedDate: currentDate
+            };
+          } else if (t.recurring === 'weekly') {
+            let nextStreak = t.streak || 0;
+            if (t.lastCompletedDate) {
+              try {
+                const lastDate = new Date(t.lastCompletedDate);
+                const diffTime = Math.abs(new Date().getTime() - lastDate.getTime());
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                if (diffDays <= 10 && diffDays >= 4) {
+                  nextStreak += 1;
+                } else if (diffDays > 10) {
+                  nextStreak = 1;
+                }
+              } catch (err) {
+                nextStreak = 1;
+              }
+            } else {
+              nextStreak = 1;
+            }
+            return {
+              ...t,
+              completed: nextVal,
+              streak: nextStreak,
+              lastCompletedDate: currentDate
+            };
+          }
+        } else {
+          if (t.recurring === 'daily' || t.recurring === 'weekly') {
+            const nextStreak = Math.max(0, (t.streak || 1) - 1);
+            return {
+              ...t,
+              completed: nextVal,
+              streak: nextStreak,
+              lastCompletedDate: undefined
+            };
+          }
         }
         return { ...t, completed: nextVal };
       }
@@ -975,6 +1112,8 @@ export default function App() {
             setTaskPriority={setTaskPriority}
             taskDuration={taskDuration}
             setTaskDuration={setTaskDuration}
+            taskRecurring={taskRecurring}
+            setTaskRecurring={setTaskRecurring}
             handleAddTask={handleAddTask}
             handlePlanDay={handlePlanDay}
             handleExportTasks={handleExportTasks}

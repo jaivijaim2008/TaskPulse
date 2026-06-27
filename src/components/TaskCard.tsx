@@ -226,6 +226,12 @@ export const TaskCard = React.memo<TaskCardProps>(({
                     URGENT
                   </span>
                 )}
+                {task.recurring && task.recurring !== 'none' && (task.streak || 0) > 0 && (
+                  <span className="inline-flex items-center gap-1 bg-gradient-to-r from-amber-500/25 to-orange-500/25 text-orange-300 text-[10px] font-black px-2 py-0.5 rounded-lg border border-orange-500/40 animate-pulse shadow-md shadow-orange-950/20" title={`${task.streak} days consecutive habit streak!`}>
+                    <span>🔥</span>
+                    <span>{task.streak}D STREAK</span>
+                  </span>
+                )}
                 <span className="truncate max-w-full block">{task.title}</span>
               </h3>
 
@@ -323,6 +329,15 @@ export const TaskCard = React.memo<TaskCardProps>(({
               }`}>
                 {task.priority.toUpperCase()}
               </span>
+              {task.recurring && task.recurring !== 'none' && (
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 border ${
+                  task.recurring === 'daily'
+                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                    : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                }`}>
+                  <span>🔁 {task.recurring === 'daily' ? 'Daily' : 'Weekly'}</span>
+                </span>
+              )}
             </div>
             <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
               <Clock className="w-3 h-3" /> {formatTime}

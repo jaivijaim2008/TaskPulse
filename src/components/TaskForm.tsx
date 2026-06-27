@@ -14,6 +14,8 @@ interface TaskFormProps {
   setTaskPriority: (val: 'low' | 'medium' | 'high') => void;
   taskDuration: number;
   setTaskDuration: (val: number) => void;
+  taskRecurring: 'none' | 'daily' | 'weekly';
+  setTaskRecurring: (val: 'none' | 'daily' | 'weekly') => void;
   handleAddTask: (e: React.FormEvent) => void;
   handlePlanDay: () => void;
   handleExportTasks: () => void;
@@ -32,6 +34,8 @@ export const TaskForm = React.memo<TaskFormProps>(({
   setTaskPriority,
   taskDuration,
   setTaskDuration,
+  taskRecurring,
+  setTaskRecurring,
   handleAddTask,
   handlePlanDay,
   handleExportTasks
@@ -128,6 +132,26 @@ export const TaskForm = React.memo<TaskFormProps>(({
               <option value={90}>90 mins</option>
               <option value={120}>120 mins</option>
             </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider pl-0.5">Recurring / Habit</label>
+            <select
+              value={taskRecurring}
+              onChange={(e) => setTaskRecurring(e.target.value as any)}
+              className="w-full bg-slate-900/60 border border-slate-800 text-slate-100 p-2 rounded-xl text-xs outline-none focus:border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer font-medium"
+            >
+              <option value="none">🔁 One-time</option>
+              <option value="daily">🔥 Daily Habit</option>
+              <option value="weekly">📅 Weekly Habit</option>
+            </select>
+          </div>
+          <div className="flex flex-col justify-end pb-1.5 pl-1.5 text-[10px] font-semibold uppercase tracking-wider">
+            {taskRecurring === 'daily' && <span className="text-amber-400 flex items-center gap-1 select-none animate-pulse">🔥 Streak Active</span>}
+            {taskRecurring === 'weekly' && <span className="text-indigo-400 flex items-center gap-1 select-none animate-pulse">📅 Weekly Goal</span>}
+            {taskRecurring === 'none' && <span className="text-slate-500 select-none">Standard task</span>}
           </div>
         </div>
 

@@ -23,6 +23,9 @@ export interface Task {
   aiUrgencyReason?: string; // AI explanation for priority
   createdAt: string;
   position?: number;
+  recurring?: 'none' | 'daily' | 'weekly';
+  streak?: number;
+  lastCompletedDate?: string;
 }
 
 export interface ChatMessage {
