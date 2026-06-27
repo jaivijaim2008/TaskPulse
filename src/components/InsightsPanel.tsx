@@ -39,7 +39,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
             >
               <div className="flex items-center justify-between">
                 <span className="text-2xl filter drop-shadow-sm group-hover:scale-110 transition-transform duration-250">{ins.icon}</span>
-                <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Insight #{idx + 1}</span>
+                <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">Insight #{idx + 1}</span>
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-100 group-hover:text-emerald-400 transition-colors duration-150 mb-1">{ins.title}</h3>

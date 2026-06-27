@@ -12,7 +12,7 @@
 The Last-Minute Life Saver — Vibe2Ship Hackathon (Coding Ninjas × Google for Developers). Students and professionals frequently miss deadlines. Existing tools rely on passive reminders that are easy to ignore.
 
 ## 💡 Solution
-TaskPulse is an AI-powered deadline agent built on Gemini 2.0 Flash. It autonomously prioritizes workload, generates personalized schedules, breaks down complex tasks, and provides real-time productivity coaching through a conversational AI interface.
+TaskPulse is an AI-powered deadline agent built on Gemini 1.5 Flash. It autonomously prioritizes workload, generates personalized schedules, breaks down complex tasks, and provides real-time productivity coaching through a conversational AI interface.
 
 ## ✨ Key Features
 - 🔴 Visual Urgency Rings — live circular countdown rings that shift green → yellow → red as deadline approaches
@@ -38,6 +38,63 @@ TaskPulse is an AI-powered deadline agent built on Gemini 2.0 Flash. It autonomo
 | Google Gemini 2.0 Flash | Core AI for prioritization, scheduling, breakdown, agent chat |
 | Google AI Studio | Development environment and deployment pipeline |
 | Google Cloud Run | Serverless container deployment |
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        React 19 Frontend                        │
+│  ┌──────────┐  ┌──────────────┐  ┌──────────┐  ┌────────────┐  │
+│  │ TaskCard │  │  ChatPanel   │  │ Schedule │  │  Insights  │  │
+│  │  (Urgency│  │  (Streaming  │  │  Panel   │  │   Panel    │  │
+│  │  Rings)  │  │   Chat UI)   │  │          │  │            │  │
+│  └────┬─────┘  └──────┬───────┘  └────┬─────┘  └─────┬──────┘  │
+│       │               │               │              │          │
+│  ┌────┴───────────────┴───────────────┴──────────────┴──────┐   │
+│  │              localStorage (Tasks + Chat History)         │   │
+│  └──────────────────────────┬───────────────────────────────┘   │
+│                             │                                   │
+│  ┌──────────────────────────┴───────────────────────────────┐   │
+│  │              Quota Indicator UI (Polls /api/quota-status)│   │
+│  └──────────────────────────┬───────────────────────────────┘   │
+└─────────────────────────────┼───────────────────────────────────┘
+                              │ HTTP (fetch + streaming)
+┌─────────────────────────────┼───────────────────────────────────┐
+│                     Express.js Server                            │
+│  ┌──────────────────────────┴───────────────────────────────┐   │
+│  │                  Rate Limiter (10 RPM)                    │   │
+│  │              Response Cache (5-min TTL)                    │   │
+│  └──────────────────────────┬───────────────────────────────┘   │
+│                             │                                   │
+│  ┌──────────────────────────┴───────────────────────────────┐   │
+│  │            Multi-Key Rotation Engine                      │   │
+│  │    ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐    │   │
+│  │    │Key #0│  │Key #1│  │Key #2│  │Key #3│  │Key #N│    │   │
+│  │    └──┬───┘  └──┬───┘  └──┬───┘  └──┬───┘  └──┬───┘    │   │
+│  │       └─────────┴─────────┴─────────┴─────────┘         │   │
+│  └──────────────────────────┬───────────────────────────────┘   │
+│                             │                                   │
+│  ┌──────────────────────────┴───────────────────────────────┐   │
+│  │              Fallback: Local Cognitive Engine              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │
+┌─────────────────────────────┴───────────────────────────────────┐
+│              Google Gemini 1.5 Flash API                         │
+│         ┌──────────┐  ┌──────────┐  ┌──────────┐               │
+│         │  /chat   │  │/breakdown│  │/schedule │  + /insights  │
+│         └──────────┘  └──────────┘  └──────────┘               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Data flow:**
+1. User interacts with React components (Chat, Tasks, Schedule, Insights)
+2. Frontend sends HTTP requests to Express server endpoints
+3. Server checks **rate limiter** → **response cache** → selects an available **Gemini key**
+4. If Gemini returns quota error, server **rotates to next key** automatically
+5. If all keys exhausted, server falls back to **local cognitive engine** (scripted responses)
+6. Responses stream back to the frontend via chunked transfer encoding
+7. **Quota dashboard** polls `/api/quota-status` every 15s to show real-time usage
 
 ## 🚀 Local Setup
 git clone https://github.com/jaivijaim2008/TaskPulse.git
