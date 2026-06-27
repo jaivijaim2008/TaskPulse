@@ -118,7 +118,7 @@ Once registered, I will automatically calculate its **Urgency Ring** color, enab
   }
 
   // 1. GREETINGS & INTRODUCTIONS
-  if (msgLower.match(/\b(hi|hello|hey|greetings|good morning|good afternoon|good evening|yo)\b/)) {
+  if (msgLower.match(/\b(hi|hello|hey|greetings|good morning|good afternoon|good evening|yo|help|info)\b/)) {
     let response = `⚡ **TaskPulse Core Intelligence Engine** ⚡\n\n`;
     response += `Hello! I am your on-device productivity strategist, running entirely on TaskPulse's local cognitive engine.\n\n`;
     if (pending.length > 0) {
@@ -138,7 +138,7 @@ Once registered, I will automatically calculate its **Urgency Ring** color, enab
   }
 
   // 2. POMODORO / TECHNIQUE QUESTIONS
-  if (msgLower.includes('pomodoro') || msgLower.includes('focus technique') || msgLower.includes('time management')) {
+  if (msgLower.includes('pomodoro') || msgLower.includes('pomo') || msgLower.includes('focus') || msgLower.includes('tip') || msgLower.includes('technique') || msgLower.includes('time management')) {
     return `### ⏱️ The Pomodoro Focus Protocol
 
 The **Pomodoro Technique** is highly recommended for your current workload of **${pending.length} pending tasks**. Here is how to execute it:
@@ -643,7 +643,7 @@ If the user asks you to "organize", "add", "schedule", or "track" a task in chat
     });
 
     const responseStream = await ai.models.generateContentStream({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-2.5-flash',
       contents: contents,
       config: {
         systemInstruction: systemInstruction,
@@ -665,7 +665,20 @@ If the user asks you to "organize", "add", "schedule", or "track" a task in chat
     try {
       const { message, tasks, history, localTime } = req.body;
       const clientTime = localTime || new Date().toLocaleString('en-IN');
-      const text = fallbackChat(message || 'hi', tasks || [], clientTime, history);
+      let text = fallbackChat(message || 'hi', tasks || [], clientTime, history);
+      
+      const errStr = err.message || err.toString() || '';
+      const isQuotaError = errStr.includes('Quota exceeded') || 
+                           errStr.includes('429') || 
+                           errStr.includes('RESOURCE_EXHAUSTED') || 
+                           errStr.includes('quota') || 
+                           errStr.includes('limit');
+
+      if (isQuotaError) {
+        text += `\n\n---\n*⚠️ **Gemini Free-Tier Quota Exceeded**: I am automatically falling back to my custom **Local Cognitive Engine** to reply offline. To restore full, real-time unscripted AI chat, please wait for your quota to reset or update your key in the secrets panel!*`;
+      } else {
+        text += `\n\n---\n*⚠️ **Gemini API Error (Fallback Active)**: ${err.message || 'Verification Error'}. Running in Local Offline Mode.*`;
+      }
       
       if (!res.headersSent) {
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -721,7 +734,7 @@ You MUST return the response ONLY as a JSON array with the following schema:
 Do not include any extra text, preamble, or markdown code blocks (like \`\`\`json). Just the raw valid JSON array.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         temperature: 0.3,
@@ -798,7 +811,7 @@ You MUST return the schedule ONLY as a valid JSON object matching the following 
 Do not include any extra text or markdown wrapping. Just return raw valid JSON.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         temperature: 0.4,
@@ -860,7 +873,7 @@ You MUST return the insights ONLY as a valid JSON object matching the following 
 Only return raw valid JSON. Do not include markdown wraps or preambles.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         temperature: 0.5,
@@ -936,10 +949,20 @@ app.get('/api/key-check', async (req, res) => {
     });
   } catch (err: any) {
     console.error('API key diagnostic test failed:', err);
+    
+    const errStr = err.message || err.toString() || '';
+    const isQuotaError = errStr.includes('Quota exceeded') || 
+                         errStr.includes('429') || 
+                         errStr.includes('RESOURCE_EXHAUSTED') || 
+                         errStr.includes('quota') || 
+                         errStr.includes('limit');
+
     res.json({
       configured: true,
-      status: 'error',
-      message: `The API key was found but the verification request returned an error: ${err.message}`,
+      status: isQuotaError ? 'quota_exceeded' : 'error',
+      message: isQuotaError 
+        ? `Your Gemini API Key is valid, but it has exceeded the daily or minute rate limits on the free tier (20 requests/day for gemini-2.5-flash). Please wait for the quota to reset, or update your billing plan in AI Studio.`
+        : `The API key was found but the verification request returned an error: ${err.message}`,
       error_details: err.stack || err.toString(),
       diagnostics: {
         key_length: activeKey.length,

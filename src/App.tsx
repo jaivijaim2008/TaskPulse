@@ -916,6 +916,15 @@ export default function App() {
               </span>
               <span className="text-emerald-400 font-bold">Gemini AI Online</span>
             </div>
+          ) : apiKeyStatus.status === 'quota_exceeded' ? (
+            <div 
+              className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-rose-500/15 transition-all animate-pulse" 
+              title={`${apiKeyStatus.message}. Click for diagnostic details.`} 
+              onClick={() => alert(`Gemini API Quota Exceeded:\n\n${apiKeyStatus.message}\n\nTaskPulse is running in high-performance Local Simulation Mode until your API quota resets or you switch keys.`)}
+            >
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              <span className="text-rose-400 font-bold flex items-center gap-1">Quota Exceeded ⏳</span>
+            </div>
           ) : apiKeyStatus.status === 'error' ? (
             <div 
               className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-amber-500/15 transition-all" 
