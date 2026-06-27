@@ -21,6 +21,7 @@ import { SchedulePanel } from './components/SchedulePanel';
 import { InsightsPanel } from './components/InsightsPanel';
 import { TaskModal } from './components/TaskModal';
 import { UnfinishedModal } from './components/UnfinishedModal';
+import { DiagnosticModal } from './components/DiagnosticModal';
 
 // ============ INTERACTION FEEDBACK UTILITIES ============
 const playCompletionSound = () => {
@@ -123,6 +124,7 @@ export default function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [focusedTask, setFocusedTask] = useState<Task | null>(null);
   const [showUnfinishedModal, setShowUnfinishedModal] = useState(false);
+  const [diagnosticModal, setDiagnosticModal] = useState<{ isOpen: boolean; title: string; message: string; details?: string; status: 'working' | 'quota_exceeded' | 'error' | 'info' } | null>(null);
   const [sortBy, setSortBy] = useState<'auto' | 'custom'>('auto');
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
@@ -431,7 +433,12 @@ export default function App() {
   const toggleListening = React.useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser. Please use Chrome, Safari, or Edge.");
+      setDiagnosticModal({
+        isOpen: true,
+        title: "Voice Input Not Supported",
+        message: "Speech recognition is not supported in your current browser environment. Please try Chrome, Safari, or Microsoft Edge for full real-time speech-to-text integration.",
+        status: "info"
+      });
       return;
     }
 
@@ -1158,7 +1165,17 @@ export default function App() {
               <span className="text-slate-400 font-bold">Connecting Engine...</span>
             </div>
           ) : apiKeyStatus.status === 'working' ? (
-            <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 rounded-full text-xs" title={apiKeyStatus.message}>
+            <div 
+              className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-emerald-500/15 transition-all" 
+              title={`${apiKeyStatus.message}. Click for diagnostic details.`}
+              onClick={() => setDiagnosticModal({
+                isOpen: true,
+                title: "Gemini AI Connection Active",
+                message: apiKeyStatus.message,
+                details: apiKeyStatus.sample_response ? `Sample response verification:\n"${apiKeyStatus.sample_response}"\n\nActive Key Location: ${apiKeyStatus.diagnostics?.using_variable || 'GEMINI_API_KEY'}\nPrefix: ${apiKeyStatus.diagnostics?.prefix || 'unknown'}` : "API verification ping successful.",
+                status: "working"
+              })}
+            >
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -1169,7 +1186,13 @@ export default function App() {
             <div 
               className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-rose-500/15 transition-all animate-pulse" 
               title={`${apiKeyStatus.message}. Click for diagnostic details.`} 
-              onClick={() => alert(`Gemini API Quota Exceeded:\n\n${apiKeyStatus.message}\n\nTaskPulse is running in high-performance Local Simulation Mode until your API quota resets or you switch keys.`)}
+              onClick={() => setDiagnosticModal({
+                isOpen: true,
+                title: "Gemini API Quota Exceeded",
+                message: apiKeyStatus.message,
+                details: apiKeyStatus.error_details || "HTTP 429 - RESOURCE_EXHAUSTED",
+                status: "quota_exceeded"
+              })}
             >
               <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
               <span className="text-rose-400 font-bold flex items-center gap-1">Quota Exceeded ⏳</span>
@@ -1178,7 +1201,13 @@ export default function App() {
             <div 
               className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-amber-500/15 transition-all" 
               title={`${apiKeyStatus.message}. Click for diagnostic details.`} 
-              onClick={() => alert(`Gemini Key Diagnostic Error:\n\n${apiKeyStatus.message}\n\nRunning in local fallback simulator.`)}
+              onClick={() => setDiagnosticModal({
+                isOpen: true,
+                title: "Gemini Key Diagnostic Error",
+                message: apiKeyStatus.message,
+                details: apiKeyStatus.error_details || "Initialization or authentication with Google GenAI endpoint failed.",
+                status: "error"
+              })}
             >
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
               <span className="text-amber-400 font-bold flex items-center gap-1">Gemini Error ⚠️</span>
@@ -1578,6 +1607,18 @@ export default function App() {
           selectTaskDirectly={selectTaskDirectly}
           handleToggleTask={handleToggleTask}
           handlePlanDay={handlePlanDay}
+        />
+      )}
+
+      {/* Custom System Diagnostic Modal */}
+      {diagnosticModal?.isOpen && (
+        <DiagnosticModal
+          isOpen={diagnosticModal.isOpen}
+          title={diagnosticModal.title}
+          message={diagnosticModal.message}
+          details={diagnosticModal.details}
+          status={diagnosticModal.status}
+          onClose={() => setDiagnosticModal(null)}
         />
       )}
     </div>
