@@ -147,8 +147,9 @@ export default function App() {
   // Resize & Split Layout States
   const [sidebarWidth, setSidebarWidth] = useState<number>(380);
   const [sidebarHeight, setSidebarHeight] = useState<number>(300);
+  const [topSidebarHeight, setTopSidebarHeight] = useState<number>(340);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [dragType, setDragType] = useState<'width' | 'height' | null>(null);
+  const [dragType, setDragType] = useState<'width' | 'height' | 'topSidebarHeight' | null>(null);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [mobileSplitMode, setMobileSplitMode] = useState<boolean>(false);
 
@@ -179,6 +180,15 @@ export default function App() {
             setSidebarHeight(nextHeight);
           }
         }
+      } else if (dragType === 'topSidebarHeight') {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar) {
+          const rect = sidebar.getBoundingClientRect();
+          const nextHeight = e.clientY - rect.top;
+          if (nextHeight >= 100 && nextHeight <= window.innerHeight - 150) {
+            setTopSidebarHeight(nextHeight);
+          }
+        }
       }
     };
 
@@ -197,6 +207,15 @@ export default function App() {
           const nextHeight = touch.clientY - rect.top;
           if (nextHeight >= 160 && nextHeight <= window.innerHeight - 200) {
             setSidebarHeight(nextHeight);
+          }
+        }
+      } else if (dragType === 'topSidebarHeight') {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar) {
+          const rect = sidebar.getBoundingClientRect();
+          const nextHeight = touch.clientY - rect.top;
+          if (nextHeight >= 100 && nextHeight <= window.innerHeight - 150) {
+            setTopSidebarHeight(nextHeight);
           }
         }
       }
@@ -1208,78 +1227,98 @@ export default function App() {
               : { width: `${sidebarWidth}px`, flexShrink: 0 }
           }
         >
-          {/* Header & Task Creation Form */}
-          <TaskForm
-            taskTitle={taskTitle}
-            setTaskTitle={setTaskTitle}
-            taskDesc={taskDesc}
-            setTaskDesc={setTaskDesc}
-            taskDeadline={taskDeadline}
-            setTaskDeadline={setTaskDeadline}
-            taskCategory={taskCategory}
-            setTaskCategory={setTaskCategory}
-            taskPriority={taskPriority}
-            setTaskPriority={setTaskPriority}
-            taskDuration={taskDuration}
-            setTaskDuration={setTaskDuration}
-            taskRecurring={taskRecurring}
-            setTaskRecurring={setTaskRecurring}
-            handleAddTask={handleAddTask}
-            handlePlanDay={handlePlanDay}
-            handleExportTasks={handleExportTasks}
-          />
+          {/* Top Resizable Section */}
+          <div 
+            className="flex flex-col flex-shrink-0 overflow-y-auto custom-scrollbar border-b border-slate-850/40"
+            style={{ height: `${topSidebarHeight}px`, minHeight: '120px', maxHeight: '75vh' }}
+          >
+            {/* Header & Task Creation Form */}
+            <TaskForm
+              taskTitle={taskTitle}
+              setTaskTitle={setTaskTitle}
+              taskDesc={taskDesc}
+              setTaskDesc={setTaskDesc}
+              taskDeadline={taskDeadline}
+              setTaskDeadline={setTaskDeadline}
+              taskCategory={taskCategory}
+              setTaskCategory={setTaskCategory}
+              taskPriority={taskPriority}
+              setTaskPriority={setTaskPriority}
+              taskDuration={taskDuration}
+              setTaskDuration={setTaskDuration}
+              taskRecurring={taskRecurring}
+              setTaskRecurring={setTaskRecurring}
+              handleAddTask={handleAddTask}
+              handlePlanDay={handlePlanDay}
+              handleExportTasks={handleExportTasks}
+            />
 
-          {/* Search bar */}
-          <div className="px-5 py-3 border-b border-slate-850 bg-transparent flex items-center gap-2 flex-shrink-0">
-            <div className="relative w-full">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search tasks..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-900/40 border border-slate-850 text-slate-100 pl-9 pr-8 py-1.5 rounded-lg text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder:text-slate-500"
-              />
-              {searchQuery && (
+            {/* Search bar */}
+            <div className="px-5 py-3 border-b border-slate-850 bg-transparent flex items-center gap-2 flex-shrink-0">
+              <div className="relative w-full">
+                <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search tasks..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full bg-slate-900/40 border border-slate-850 text-slate-100 pl-9 pr-8 py-1.5 rounded-lg text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder:text-slate-500"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-2 cursor-pointer text-slate-500 hover:text-slate-300 bg-transparent border-none outline-none"
+                  >
+                    <Search className="w-4 h-4 rotate-45" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Sorting preferences selector */}
+            <div className="px-5 py-2.5 bg-slate-900/20 flex items-center justify-between text-xs flex-shrink-0">
+              <span className="text-slate-200 font-extrabold uppercase tracking-widest text-[10px]">Priority Layout</span>
+              <div className="flex bg-slate-950 border border-slate-800 p-0.5 rounded-lg shadow-inner">
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2 cursor-pointer text-slate-500 hover:text-slate-300 bg-transparent border-none outline-none"
+                  onClick={() => setSortBy('auto')}
+                  className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    sortBy === 'auto'
+                      ? 'bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 font-black shadow-md shadow-emerald-950/20'
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900'
+                  }`}
+                  title="Sort automatically by status and deadline urgency"
                 >
-                  <Search className="w-4 h-4 rotate-45" />
+                  ⚡ Auto
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setSortBy('custom')}
+                  className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    sortBy === 'custom'
+                      ? 'bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 font-black shadow-md shadow-emerald-950/20'
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900'
+                  }`}
+                  title="Custom order. Drag and drop tasks in any sequence"
+                >
+                  ↕️ Custom
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Sorting preferences selector */}
-          <div className="px-5 py-2.5 border-b border-slate-850/40 bg-slate-900/20 flex items-center justify-between text-xs flex-shrink-0">
-            <span className="text-slate-200 font-extrabold uppercase tracking-widest text-[10px]">Priority Layout</span>
-            <div className="flex bg-slate-950 border border-slate-800 p-0.5 rounded-lg shadow-inner">
-              <button
-                type="button"
-                onClick={() => setSortBy('auto')}
-                className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                  sortBy === 'auto'
-                    ? 'bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 font-black shadow-md shadow-emerald-950/20'
-                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900'
-                }`}
-                title="Sort automatically by status and deadline urgency"
-              >
-                ⚡ Auto
-              </button>
-              <button
-                type="button"
-                onClick={() => setSortBy('custom')}
-                className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                  sortBy === 'custom'
-                    ? 'bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 font-black shadow-md shadow-emerald-950/20'
-                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900'
-                }`}
-                title="Custom order. Drag and drop tasks in any sequence"
-              >
-                ↕️ Custom
-              </button>
+          {/* VERTICAL DIVIDER INSIDE SIDEBAR (↕ Arrows) */}
+          <div
+            className="h-1.5 hover:h-2 bg-slate-950/45 hover:bg-emerald-500/10 active:bg-emerald-500/25 border-y border-slate-850/50 cursor-row-resize select-none transition-all relative z-20 flex-shrink-0 flex items-center justify-center group/v"
+            onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); setDragType('topSidebarHeight'); }}
+            onTouchStart={() => { setIsDragging(true); setDragType('topSidebarHeight'); }}
+          >
+            <div className="absolute flex items-center justify-center bg-slate-900 border border-slate-800 h-5 px-3 rounded-full shadow-md shadow-black/40 group-hover:border-emerald-500/30 transition-colors">
+              <span className="text-emerald-400 font-black text-[10px] select-none cursor-row-resize flex items-center gap-1 leading-none">
+                <span>↕</span>
+                <span className="text-[8px] text-slate-300 font-extrabold uppercase tracking-widest pl-0.5">Adjust Split</span>
+              </span>
             </div>
           </div>
 
@@ -1402,10 +1441,17 @@ export default function App() {
             onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); setDragType('width'); }}
             onTouchStart={() => { setIsDragging(true); setDragType('width'); }}
           >
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-slate-900 border border-slate-800 w-5 py-3 rounded-full shadow-md shadow-black/40 group-hover:border-emerald-500/30 transition-colors">
-              <span className="text-emerald-400 font-extrabold text-[10px] select-none cursor-col-resize flex flex-col items-center leading-none">
-                <span>←</span>
-                <span>→</span>
+            {/* Upper Grab Handle */}
+            <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center bg-slate-900 border border-slate-800 w-6 h-10 rounded-full shadow-md shadow-black/40 group-hover:border-emerald-500/30 transition-colors cursor-col-resize">
+              <span className="text-emerald-400 font-black text-sm select-none">
+                ↔
+              </span>
+            </div>
+
+            {/* Lower Grab Handle (next to bottom task list / stats-summary area) */}
+            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 flex items-center justify-center bg-slate-900 border border-slate-800 w-6 h-10 rounded-full shadow-md shadow-black/40 group-hover:border-emerald-500/30 transition-colors cursor-col-resize">
+              <span className="text-emerald-400 font-black text-sm select-none">
+                ↔
               </span>
             </div>
           </div>
