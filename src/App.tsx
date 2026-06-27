@@ -107,6 +107,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
   const [mobileView, setMobileView] = useState<'tasks' | 'chat' | 'schedule' | 'insights'>('tasks');
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const [focusedTask, setFocusedTask] = useState<Task | null>(null);
   const [showUnfinishedModal, setShowUnfinishedModal] = useState(false);
   const [sortBy, setSortBy] = useState<'auto' | 'custom'>('auto');
@@ -874,6 +875,16 @@ export default function App() {
   }).length;
   const completedCount = currentTasks.filter(t => t.completed).length;
 
+  // ============ AUTO-FOCUS CHAT ON TAB SWITCH ============
+  useEffect(() => {
+    if (mobileView === 'chat' || activeTab === 'chat') {
+      const timer = setTimeout(() => {
+        chatInputRef.current?.focus();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [mobileView, activeTab]);
+
   // ============ SWIPE GESTURE HANDLER ============
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
@@ -1222,7 +1233,7 @@ export default function App() {
           <div className="flex-1 overflow-hidden relative flex flex-col bg-transparent">
             
             {/* 1. CHAT VIEW */}
-            <div className={`flex-1 flex-col overflow-hidden ${activeTab === 'chat' ? 'flex' : 'hidden'}`}>
+            <div className={`flex-1 flex-col overflow-hidden ${activeTab === 'chat' ? 'flex animate-slide-in-right' : 'hidden'}`}>
               <ChatPanel
                 chatMessages={chatMessages}
                 chatInput={chatInput}
@@ -1233,11 +1244,12 @@ export default function App() {
                 toggleListening={toggleListening}
                 handleSendMessage={handleSendMessage}
                 handleClearChat={handleClearChat}
+                chatInputRef={chatInputRef}
               />
             </div>
 
             {/* 2. SCHEDULE PLANNER VIEW */}
-            <div className={`flex-1 overflow-hidden ${activeTab === 'schedule' ? 'flex' : 'hidden'}`}>
+            <div className={`flex-1 overflow-hidden ${activeTab === 'schedule' ? 'flex animate-slide-in-right' : 'hidden'}`}>
               <SchedulePanel
                 scheduleData={scheduleData}
                 handlePlanDay={handlePlanDay}
@@ -1245,7 +1257,7 @@ export default function App() {
             </div>
 
             {/* 3. INSIGHTS VIEW */}
-            <div className={`flex-1 overflow-hidden ${activeTab === 'insights' ? 'flex' : 'hidden'}`}>
+            <div className={`flex-1 overflow-hidden ${activeTab === 'insights' ? 'flex animate-slide-in-right' : 'hidden'}`}>
               <InsightsPanel
                 insights={insights}
                 handleFullAnalysis={handleFullAnalysis}
@@ -1282,6 +1294,24 @@ export default function App() {
         />
       )}
 
+      {/* MOBILE FLOATING ACTION BUTTON */}
+      <button
+        type="button"
+        onClick={() => {
+          setMobileView('tasks');
+          setMobileSidebarOpen(true);
+          // Scroll to top of task form
+          setTimeout(() => {
+            const form = document.querySelector('#sidebar input[type="text"]') as HTMLInputElement;
+            form?.focus();
+          }, 350);
+        }}
+        className="md:hidden fixed bottom-20 right-4 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-slate-950 flex items-center justify-center shadow-lg shadow-emerald-500/25 cursor-pointer active:scale-90 transition-all duration-200 animate-fab-pulse"
+        title="Quick Add Task"
+      >
+        <Plus className="w-6 h-6 stroke-[3]" />
+      </button>
+
       {/* MOBILE BOTTOM NAVIGATION BAR */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-stretch">
@@ -1305,7 +1335,7 @@ export default function App() {
                     setActiveTab(item.key as 'chat' | 'schedule' | 'insights');
                   }
                 }}
-                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-all relative cursor-pointer ${
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-all duration-200 relative cursor-pointer ${
                   isActive
                     ? 'text-emerald-400'
                     : 'text-slate-500 hover:text-slate-300'

@@ -32,3 +32,36 @@
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+/* Tab view transition animations */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.25s ease-out both;
+}
+.animate-slide-in-up {
+  animation: slideInUp 0.2s ease-out both;
+}
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out both;
+}
+
+/* FAB pulse glow effect */
+@keyframes fabPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); }
+}
+.animate-fab-pulse {
+  animation: fabPulse 2s infinite ease-in-out;
+}

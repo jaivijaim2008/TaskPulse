@@ -12,6 +12,7 @@ interface ChatPanelProps {
   toggleListening: () => void;
   handleSendMessage: (e?: React.FormEvent | string, text?: string) => void;
   handleClearChat: () => void;
+  chatInputRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
 
 export const ChatPanel = React.memo<ChatPanelProps>(({
@@ -23,7 +24,8 @@ export const ChatPanel = React.memo<ChatPanelProps>(({
   speechSupported,
   toggleListening,
   handleSendMessage,
-  handleClearChat
+  handleClearChat,
+  chatInputRef
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [localInput, setLocalInput] = React.useState(chatInput);
@@ -177,6 +179,7 @@ export const ChatPanel = React.memo<ChatPanelProps>(({
           className="flex gap-2.5 items-center"
         >
           <textarea
+            ref={chatInputRef}
             rows={1}
             value={localInput}
             onChange={e => setLocalInput(e.target.value)}
