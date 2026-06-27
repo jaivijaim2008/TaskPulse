@@ -86,7 +86,7 @@ export const ChatPanel = React.memo<ChatPanelProps>(({
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-950/10">
       {/* Active Session info bar */}
       <div className="px-6 py-2.5 border-b border-slate-800/50 bg-slate-950/20 flex items-center justify-between flex-shrink-0">
-        <span className="text-[10px] uppercase tracking-widest text-slate-400 font-bold flex items-center gap-1.5">
+        <span className="text-[11px] uppercase tracking-widest text-slate-400 font-bold flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           TaskPulse AI Assistant Chat
         </span>
@@ -96,7 +96,7 @@ export const ChatPanel = React.memo<ChatPanelProps>(({
               handleClearChat();
             }
           }}
-          className="text-[10px] font-bold uppercase tracking-wider text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 px-2.5 py-1 rounded-lg transition-all cursor-pointer active:scale-98"
+          className="text-[11px] font-bold uppercase tracking-wider text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 px-3 py-1.5 rounded-lg transition-all cursor-pointer active:scale-98"
         >
           Clear History
         </button>
@@ -157,7 +157,7 @@ export const ChatPanel = React.memo<ChatPanelProps>(({
                 setChatInput(action.text);
                 setLocalInput(action.text);
               }}
-              className="bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-emerald-500/40 text-slate-400 hover:text-emerald-400 text-[10px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-full transition-all whitespace-nowrap cursor-pointer active:scale-95"
+              className="bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-emerald-500/40 text-slate-400 hover:text-emerald-400 text-[11px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-full transition-all whitespace-nowrap cursor-pointer active:scale-95"
             >
               {action.label}
             </button>

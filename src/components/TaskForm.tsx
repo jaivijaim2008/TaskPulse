@@ -37,16 +37,16 @@ export const TaskForm = React.memo<TaskFormProps>(({
   handleExportTasks
 }) => {
   return (
-    <div className="p-5 border-b border-slate-800/60 bg-slate-950/20">
+    <div className="p-5 sm:p-6 border-b border-slate-800/60 bg-slate-950/20">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400" />
           Create Task Plan
         </h2>
         <button
           type="button"
           onClick={handleExportTasks}
-          className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-all cursor-pointer"
+          className="text-[11px] font-semibold uppercase tracking-wider text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all cursor-pointer"
           title="Backup your tasks to a JSON file"
         >
           <Download className="w-3 h-3" />
@@ -77,20 +77,20 @@ export const TaskForm = React.memo<TaskFormProps>(({
 
         <div className="grid grid-cols-2 gap-2">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider pl-0.5">Deadline</label>
+            <label className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider pl-0.5">Deadline</label>
             <input
               type="datetime-local"
               value={taskDeadline}
               onChange={(e) => setTaskDeadline(e.target.value)}
-              className="w-full bg-slate-900/60 border border-slate-800 text-slate-100 p-2 rounded-xl text-xs outline-none focus:border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+              className="w-full bg-slate-900/60 border border-slate-800 text-slate-100 p-2.5 rounded-xl text-sm outline-none focus:border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/20 transition-all"
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider pl-0.5">Category</label>
+            <label className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider pl-0.5">Category</label>
             <select
               value={taskCategory}
               onChange={(e) => setTaskCategory(e.target.value)}
-              className="w-full bg-slate-900/60 border border-slate-800 text-slate-100 p-2 rounded-xl text-xs outline-none focus:border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer"
+              className="w-full bg-slate-900/60 border border-slate-800 text-slate-100 p-2.5 rounded-xl text-sm outline-none focus:border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer"
             >
               <option value="work">💼 Work / Projects</option>
               <option value="study">📚 Study / Research</option>
@@ -103,11 +103,11 @@ export const TaskForm = React.memo<TaskFormProps>(({
 
         <div className="grid grid-cols-2 gap-2">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider pl-0.5">Priority</label>
+            <label className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider pl-0.5">Priority</label>
             <select
               value={taskPriority}
               onChange={(e) => setTaskPriority(e.target.value as any)}
-              className="w-full bg-slate-900/60 border border-slate-800 text-slate-100 p-2 rounded-xl text-xs outline-none focus:border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer"
+              className="w-full bg-slate-900/60 border border-slate-800 text-slate-100 p-2.5 rounded-xl text-sm outline-none focus:border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer"
             >
               <option value="low">🟢 Low Priority</option>
               <option value="medium">🟡 Medium Priority</option>
@@ -115,11 +115,11 @@ export const TaskForm = React.memo<TaskFormProps>(({
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider pl-0.5">Est. Duration</label>
+            <label className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider pl-0.5">Est. Duration</label>
             <select
               value={taskDuration}
               onChange={(e) => setTaskDuration(Number(e.target.value))}
-              className="w-full bg-slate-900/60 border border-slate-800 text-slate-100 p-2 rounded-xl text-xs outline-none focus:border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer"
+              className="w-full bg-slate-900/60 border border-slate-800 text-slate-100 p-2.5 rounded-xl text-sm outline-none focus:border-emerald-500/80 focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer"
             >
               <option value={15}>15 mins</option>
               <option value={30}>30 mins</option>
@@ -134,14 +134,14 @@ export const TaskForm = React.memo<TaskFormProps>(({
         <div className="flex gap-2 mt-1">
           <button
             type="submit"
-            className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs py-2.5 px-4 rounded-xl transition-all duration-200 shadow-lg shadow-emerald-500/10 flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+            className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-sm py-3 px-4 rounded-xl transition-all duration-200 shadow-lg shadow-emerald-500/10 flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
           >
             <Plus className="w-4 h-4 text-slate-950 stroke-[3]" /> Add Task
           </button>
           <button
             type="button"
             onClick={handlePlanDay}
-            className="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-emerald-400 hover:text-emerald-300 text-xs py-2.5 px-3.5 rounded-xl transition-all duration-200 flex items-center justify-center gap-1.5 font-bold cursor-pointer active:scale-98"
+            className="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-emerald-400 hover:text-emerald-300 text-sm py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-1.5 font-bold cursor-pointer active:scale-98"
             title="Generate a smart chronological daily schedule with AI"
           >
             <Calendar className="w-4 h-4 text-emerald-400" /> Plan Day

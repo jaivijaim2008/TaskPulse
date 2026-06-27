@@ -957,7 +957,7 @@ export default function App() {
         {/* LEFT PANEL: Task Sidebar */}
         <aside 
           id="sidebar" 
-          className={`bg-[#070A13]/95 md:bg-slate-900/10 border-r border-slate-850/80 flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] fixed md:static top-16 bottom-0 left-0 z-40 w-[320px] md:w-auto transition-transform duration-300 transform ${
+          className={`bg-[#070A13]/95 md:bg-slate-900/10 border-r border-slate-850/80 flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] fixed md:static top-16 bottom-0 left-0 z-40 w-full md:w-auto transition-transform duration-300 transform ${
             mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
           }`}
         >
@@ -1005,12 +1005,12 @@ export default function App() {
 
           {/* Sorting preferences selector */}
           <div className="px-5 py-2.5 border-b border-slate-850/40 bg-slate-900/10 flex items-center justify-between text-xs flex-shrink-0">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Priority layout</span>
+            <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Priority layout</span>
             <div className="flex bg-slate-950 border border-slate-850 p-0.5 rounded-lg">
               <button
                 type="button"
                 onClick={() => setSortBy('auto')}
-                className={`px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   sortBy === 'auto'
                     ? 'bg-emerald-400 text-slate-950 font-bold shadow-md'
                     : 'text-slate-500 hover:text-slate-300'
@@ -1022,7 +1022,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setSortBy('custom')}
-                className={`px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   sortBy === 'custom'
                     ? 'bg-emerald-400 text-slate-950 font-bold shadow-md'
                     : 'text-slate-500 hover:text-slate-300'
@@ -1035,12 +1035,12 @@ export default function App() {
           </div>
 
           {/* Scrollable Task List */}
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col gap-3 sm:gap-4 custom-scrollbar">
             {currentTasks.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
                 <span className="text-3xl mb-3 filter drop-shadow-sm">🎯</span>
-                <p className="text-xs font-bold text-slate-200">No tasks planned yet</p>
-                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed font-medium">Add tasks above to organize your goals and let AI optimize your agenda.</p>
+                <p className="text-sm font-bold text-slate-200">No tasks planned yet</p>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed font-medium">Add tasks above to organize your goals and let AI optimize your agenda.</p>
               </div>
             ) : currentTasks.filter(t => 
                 t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1048,7 +1048,7 @@ export default function App() {
               ).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
                 <span className="text-2xl mb-2">🔍</span>
-                <p className="text-xs font-bold text-slate-400">No matching task plans</p>
+                <p className="text-sm font-bold text-slate-400">No matching task plans</p>
               </div>
             ) : (
               currentTasks
@@ -1101,16 +1101,16 @@ export default function App() {
           {/* Footer Stats summary info */}
           <div id="stats-summary" className="p-4 border-t border-slate-850 bg-slate-950/20 flex-shrink-0 grid grid-cols-3 gap-2 text-center">
             <div className="flex flex-col">
-              <span className="text-sm font-extrabold text-rose-400 font-mono">{overdueCount}</span>
-               <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">🚨 Overdue</span>
+              <span className="text-xl font-extrabold text-rose-400 font-mono">{overdueCount}</span>
+               <span className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">🚨 Overdue</span>
             </div>
             <div className="flex flex-col border-x border-slate-850/60">
-              <span className="text-sm font-extrabold text-emerald-400 font-mono">{pendingCount}</span>
-              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">⏳ Pending</span>
+              <span className="text-xl font-extrabold text-emerald-400 font-mono">{pendingCount}</span>
+              <span className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">⏳ Pending</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-extrabold text-slate-400 font-mono">{completedCount}</span>
-              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">✅ Done</span>
+              <span className="text-xl font-extrabold text-slate-400 font-mono">{completedCount}</span>
+              <span className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">✅ Done</span>
             </div>
           </div>
         </aside>

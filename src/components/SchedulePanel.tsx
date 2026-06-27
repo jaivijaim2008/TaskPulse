@@ -36,7 +36,7 @@ export const SchedulePanel: React.FC<SchedulePanelProps> = ({
             <div className="bg-slate-900/40 backdrop-blur-md border border-slate-850 p-4 rounded-xl flex gap-3 items-start leading-relaxed text-xs font-medium shadow-sm">
               <Brain className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
               <div>
-                <strong className="text-emerald-400 block mb-0.5 uppercase tracking-wider text-[10px] font-bold">AI Strategist Advisory</strong>
+                <strong className="text-emerald-400 block mb-0.5 uppercase tracking-wider text-[11px] font-bold">AI Strategist Advisory</strong>
                 <p className="text-slate-200/90 leading-relaxed">{scheduleData.advice}</p>
               </div>
             </div>
@@ -62,7 +62,7 @@ export const SchedulePanel: React.FC<SchedulePanelProps> = ({
                       <div key={sIdx} className="p-4 flex items-start gap-4 transition-colors hover:bg-slate-900/10">
                         <div className="w-20 flex-shrink-0">
                           <span className="text-xs font-bold text-emerald-400 font-mono block">{slot.time}</span>
-                          <span className="block text-[10px] text-slate-400 mt-0.5 font-mono font-medium">{slot.duration}</span>
+                          <span className="block text-[11px] text-slate-400 mt-0.5 font-mono font-medium">{slot.duration}</span>
                         </div>
                         <div className={`w-1 self-stretch rounded-full flex-shrink-0 ${isBreak ? 'bg-slate-700/60' : 'bg-gradient-to-b from-indigo-500 to-emerald-400'}`} />
                         <div className="flex-1 min-w-0">
