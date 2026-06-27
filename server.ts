@@ -8,209 +8,182 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// ============ MULTI-KEY ROTATION: GEMINI KEYS ============
-// Collect all Gemini API keys from environment variables
-const getGeminiKeys = (): string[] => {
-  const keys: string[] = [];
-  // Check for numbered keys: GEMINI_API_KEY, GEMINI_API_KEY1, GEMINI_API_KEY2, ...GEMINI_API_KEY9
-  for (let i = 0; i <= 9; i++) {
-    const varName = i === 0 ? 'GEMINI_API_KEY' : `GEMINI_API_KEY${i}`;
-    const key = process.env[varName];
-    if (key && key !== 'MY_GEMINI_API_KEY' && key.trim() !== '') {
-      keys.push(key.trim());
-    }
-  }
-  return keys;
-};
+// Cache the initialized Gemini client
+let cachedGeminiClient: GoogleGenAI | null = null;
+let cachedApiKey: string | null = null;
 
-// Track which keys have been exhausted (quota exceeded) and when they reset
-const exhaustedKeys = new Map<string, number>(); // key -> timestamp when exhausted
-const KEY_COOLDOWN_MS = 60_000; // Re-try an exhausted key after 1 minute
-
-const getAvailableGeminiKey = (): string | null => {
-  const keys = getGeminiKeys();
-  const now = Date.now();
-
-  for (const key of keys) {
-    const exhaustedAt = exhaustedKeys.get(key);
-    if (!exhaustedAt || (now - exhaustedAt) > KEY_COOLDOWN_MS) {
-      return key;
-    }
-  }
-  return null; // All keys exhausted
-};
-
-const markKeyExhausted = (key: string) => {
-  exhaustedKeys.set(key, Date.now());
-  console.log(`[KeyRotation] Key ...${key.slice(-4)} marked exhausted. ${exhaustedKeys.size}/${getGeminiKeys().length} keys exhausted.`);
-};
-
-// Cache the initialized Gemini client per key
-const geminiClientCache = new Map<string, GoogleGenAI>();
-
-const getGeminiClient = (): { client: GoogleGenAI; key: string } | null => {
-  const apiKey = getAvailableGeminiKey();
-  if (!apiKey) {
-    console.warn('[KeyRotation] All Gemini API keys exhausted or not configured. Falling back.');
+// Initialize Gemini client with standard User-Agent for telemetry
+const getGeminiClient = () => {
+  // Use GEMINI_API_KEY2, GEMINI_API_KEY1 first as requested by the user, then GEMINI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY2 || process.env.GEMINI_API_KEY1 || process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.trim() === '') {
+    console.warn('Gemini API Key is not configured. Falling back to local simulation.');
     return null;
   }
-
-  const cached = geminiClientCache.get(apiKey);
-  if (cached) {
-    return { client: cached, key: apiKey };
+  
+  if (cachedGeminiClient && cachedApiKey === apiKey) {
+    return cachedGeminiClient;
   }
 
   try {
-    const client = new GoogleGenAI({
+    cachedGeminiClient = new GoogleGenAI({
       apiKey: apiKey,
       httpOptions: {
-        headers: { 'User-Agent': 'aistudio-build' }
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
       }
     });
-    geminiClientCache.set(apiKey, client);
-    console.log(`[KeyRotation] Initialized Gemini client with key ...${apiKey.slice(-4)}`);
-    return { client, key: apiKey };
+    cachedApiKey = apiKey;
+    return cachedGeminiClient;
   } catch (err) {
     console.error('Error initializing GoogleGenAI client:', err);
     return null;
   }
 };
 
-// ============ QUOTA PROTECTION: RATE LIMITER + RESPONSE CACHE ============
-
-// Rate limiter: tracks requests per minute and per day to stay under Gemini free-tier limits
-const RATE_LIMIT = {
-  maxPerMinute: 10,      // Stay under 15 RPM free-tier limit with safety margin
-  maxPerDay: 1200,       // Stay under 1,500 RPD free-tier limit with safety margin
-  cooldownMs: 2000,      // Minimum 2 seconds between consecutive API calls
+const checkIsQuotaError = (err: any): boolean => {
+  if (!err) return false;
+  const status = err.status || err.statusCode || err.code || '';
+  if (status === 429 || status === 'RESOURCE_EXHAUSTED' || String(status).includes('429')) {
+    return true;
+  }
+  const errStr = String(err.message || err.toString() || '').toLowerCase();
+  return errStr.includes('quota') || 
+         errStr.includes('429') || 
+         errStr.includes('exhausted') || 
+         errStr.includes('limit') || 
+         errStr.includes('rate');
 };
 
-const requestTimestamps: number[] = [];
-let dailyRequestCount = 0;
-let lastRequestTime = 0;
-let dailyResetDate = new Date().toDateString();
-
-const checkRateLimit = (): { allowed: boolean; retryAfterMs?: number; reason?: string } => {
-  const now = Date.now();
-
-  // Reset daily counter at midnight
-  const today = new Date().toDateString();
-  if (today !== dailyResetDate) {
-    dailyRequestCount = 0;
-    dailyResetDate = today;
-    console.log('[RateLimiter] Daily counter reset for', today);
+const getFriendlyErrorMessage = (err: any): string => {
+  if (!err) return 'Unknown connection or API error.';
+  const errStr = err.message || err.toString() || '';
+  
+  if (checkIsQuotaError(err)) {
+    return 'Your Gemini API Key has exceeded its free-tier rate limit or quota. Free-tier accounts have daily or per-minute request limits.';
   }
 
-  // Check daily limit
-  if (dailyRequestCount >= RATE_LIMIT.maxPerDay) {
-    const msUntilMidnight = new Date(new Date().setHours(24, 0, 0, 0)).getTime() - now;
-    return {
-      allowed: false,
-      retryAfterMs: msUntilMidnight,
-      reason: `Daily limit reached (${RATE_LIMIT.maxPerDay}/${RATE_LIMIT.maxPerDay}). Quota resets at midnight Pacific Time.`
-    };
+  try {
+    if (errStr.includes('{')) {
+      const startIdx = errStr.indexOf('{');
+      const endIdx = errStr.lastIndexOf('}') + 1;
+      const jsonStr = errStr.substring(startIdx, endIdx);
+      const parsed = JSON.parse(jsonStr);
+      
+      let msg = parsed.error?.message || parsed.message;
+      if (msg && msg.includes('{')) {
+        try {
+          const nestedParsed = JSON.parse(msg);
+          return nestedParsed.error?.message || nestedParsed.message || msg;
+        } catch (_) {
+          return msg;
+        }
+      }
+      if (msg) return msg;
+    }
+  } catch (e) {
+    // ignore parsing failure
   }
 
-  // Check per-minute limit (sliding window)
-  const oneMinuteAgo = now - 60_000;
-  while (requestTimestamps.length > 0 && requestTimestamps[0] < oneMinuteAgo) {
-    requestTimestamps.shift();
+  let cleanMsg = errStr.replace(/ApiError:\s*/gi, '').trim();
+  if (cleanMsg.length > 200) {
+    cleanMsg = cleanMsg.substring(0, 200) + '...';
   }
-
-  if (requestTimestamps.length >= RATE_LIMIT.maxPerMinute) {
-    const oldestInWindow = requestTimestamps[0];
-    const retryAfterMs = oldestInWindow + 60_000 - now + 500; // +500ms buffer
-    return {
-      allowed: false,
-      retryAfterMs: Math.max(retryAfterMs, 2000),
-      reason: `Per-minute limit reached (${requestTimestamps.length}/${RATE_LIMIT.maxPerMinute}). Wait a moment before trying again.`
-    };
-  }
-
-  // Check cooldown between consecutive calls
-  if (now - lastRequestTime < RATE_LIMIT.cooldownMs) {
-    const retryAfterMs = RATE_LIMIT.cooldownMs - (now - lastRequestTime);
-    return {
-      allowed: false,
-      retryAfterMs,
-      reason: `Cooldown active. Please wait ${Math.ceil(retryAfterMs / 1000)}s between requests.`
-    };
-  }
-
-  return { allowed: true };
+  return cleanMsg || 'An error occurred during the API call.';
 };
 
-const recordRequest = () => {
-  const now = Date.now();
-  requestTimestamps.push(now);
-  lastRequestTime = now;
-  dailyRequestCount++;
-  console.log(`[RateLimiter] Request recorded. Minute: ${requestTimestamps.length}/${RATE_LIMIT.maxPerMinute}, Day: ${dailyRequestCount}/${RATE_LIMIT.maxPerDay}`);
-};
+// ============ DYNAMIC MODEL FALLBACK ENGINE ============
 
-// Response cache: avoids redundant API calls for repeated/similar queries
-const responseCache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minute cache expiry
-const CACHE_MAX_ENTRIES = 100;
+const MODEL_FALLBACK_LIST = [
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-flash-latest'
+];
 
-const getCacheKey = (endpoint: string, payload: any): string => {
-  // Create a stable cache key from endpoint + relevant payload fields
-  // For chat: include task state so same question with different tasks is not stale
-  if (endpoint === 'chat') {
-    const tasks = payload.tasks || [];
-    const taskSig = tasks.map((t: any) => `${t.title}:${t.completed}`).sort().join('|');
-    return `chat:${(payload.message || '').toLowerCase().trim().slice(0, 200)}:${taskSig.slice(0, 200)}`;
+async function generateContentWithFallback(
+  ai: GoogleGenAI,
+  options: {
+    contents: any;
+    config?: any;
+    defaultModel?: string;
   }
-  if (endpoint === 'breakdown') {
-    return `breakdown:${(payload.taskTitle || '').toLowerCase().trim()}`;
+) {
+  let firstError: any = null;
+  let quotaError: any = null;
+  let lastError: any = null;
+  const modelsToTry = new Set<string>();
+  if (options.defaultModel) {
+    modelsToTry.add(options.defaultModel);
   }
-  // For schedule/insights: use task count + completed count + sorted titles hash
-  const tasks = payload.tasks || [];
-  const taskSig = tasks.map((t: any) => `${t.title}:${t.completed}`).sort().join('|');
-  return `${endpoint}:${tasks.length}:${taskSig.slice(0, 300)}`;
-};
+  MODEL_FALLBACK_LIST.forEach(m => modelsToTry.add(m));
 
-const getCached = (key: string): any | null => {
-  const entry = responseCache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
-    responseCache.delete(key);
-    return null;
+  for (const model of modelsToTry) {
+    try {
+      console.log(`[FallbackEngine] Attempting generateContent with model: ${model}`);
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: options.contents,
+        config: options.config,
+      });
+      console.log(`[FallbackEngine] Success with model: ${model}`);
+      return response;
+    } catch (err: any) {
+      lastError = err;
+      if (!firstError) {
+        firstError = err;
+      }
+      if (checkIsQuotaError(err)) {
+        quotaError = err;
+      }
+      const errStr = err.message || err.toString() || '';
+      console.warn(`[FallbackEngine] Model ${model} failed:`, errStr);
+    }
   }
-  console.log(`[Cache] HIT for key: ${key.slice(0, 60)}`);
-  return entry.data;
-};
+  throw quotaError || firstError || lastError || new Error('All models failed to generate content');
+}
 
-const setCache = (key: string, data: any) => {
-  // Evict oldest entries if cache is full
-  if (responseCache.size >= CACHE_MAX_ENTRIES) {
-    const oldestKey = responseCache.keys().next().value;
-    if (oldestKey) responseCache.delete(oldestKey);
+async function generateContentStreamWithFallback(
+  ai: GoogleGenAI,
+  options: {
+    contents: any;
+    config?: any;
+    defaultModel?: string;
   }
-  responseCache.set(key, { data, timestamp: Date.now() });
-  console.log(`[Cache] SET for key: ${key.slice(0, 60)}`);
-};
-
-// Helper: return a rate-limit error message for streaming responses
-const sendRateLimitError = async (res: express.Response, retryAfterMs: number, reason: string) => {
-  res.setHeader('Retry-After', Math.ceil(retryAfterMs / 1000).toString());
-  let text = `### ⏳ Rate Limit Active\n\n${reason}\n\n`;
-  text += `I am currently operating in **Local Simulation Mode** to protect your Gemini API quota.\n\n`;
-  text += `**What this means:**\n`;
-  text += `* Your free-tier Gemini quota (15 RPM / 1,500 RPD) was being consumed too quickly.\n`;
-  text += `* I have added automatic throttling so your quota lasts all day.\n`;
-  text += `* Please wait **${Math.ceil(retryAfterMs / 1000)} seconds** and try again.\n\n`;
-  text += `💡 **Tip**: I'll use my local fallback engine for now. Most productivity responses work great offline!`;
-
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Transfer-Encoding', 'chunked');
-  const words = text.split(/(\s+)/);
-  for (const word of words) {
-    res.write(word);
-    await new Promise(resolve => setTimeout(resolve, 5));
+) {
+  let firstError: any = null;
+  let quotaError: any = null;
+  let lastError: any = null;
+  const modelsToTry = new Set<string>();
+  if (options.defaultModel) {
+    modelsToTry.add(options.defaultModel);
   }
-  res.end();
-};
+  MODEL_FALLBACK_LIST.forEach(m => modelsToTry.add(m));
+
+  for (const model of modelsToTry) {
+    try {
+      console.log(`[FallbackEngine] Attempting generateContentStream with model: ${model}`);
+      const responseStream = await ai.models.generateContentStream({
+        model: model,
+        contents: options.contents,
+        config: options.config,
+      });
+      console.log(`[FallbackEngine] Stream successfully started with model: ${model}`);
+      return responseStream;
+    } catch (err: any) {
+      lastError = err;
+      if (!firstError) {
+        firstError = err;
+      }
+      if (checkIsQuotaError(err)) {
+        quotaError = err;
+      }
+      const errStr = err.message || err.toString() || '';
+      console.warn(`[FallbackEngine] Stream model ${model} failed:`, errStr);
+    }
+  }
+  throw quotaError || firstError || lastError || new Error('All models failed to generate content stream');
+}
 
 // ============ HIGHLY REALISTIC LOCAL SIMULATION / FALLBACK LOGIC ============
 
@@ -288,9 +261,15 @@ Once registered, I will automatically calculate its **Urgency Ring** color, enab
   }
 
   // 1. GREETINGS & INTRODUCTIONS
-  if (msgLower.match(/\b(hi|hello|hey|greetings|good morning|good afternoon|good evening|yo|help|info)\b/)) {
+  if (msgLower.match(/\b(hi|hello|hey|greetings|good morning|good afternoon|good evening|yo|help|info|vanakkam|namaste|hola|bonjour|vanakam)\b/) || msgLower === 'vanakkam' || msgLower === 'namaste' || msgLower === 'vanakam') {
     let response = `⚡ **TaskPulse Core Intelligence Engine** ⚡\n\n`;
-    response += `Hello! I am your on-device productivity strategist, running entirely on TaskPulse's local cognitive engine.\n\n`;
+    if (msgLower.includes('vanakkam') || msgLower.includes('vanakam')) {
+      response += `Vanakkam! 🙏 I am your on-device productivity strategist, running entirely on TaskPulse's local cognitive engine.\n\n`;
+    } else if (msgLower.includes('namaste')) {
+      response += `Namaste! 🙏 I am your on-device productivity strategist, running entirely on TaskPulse's local cognitive engine.\n\n`;
+    } else {
+      response += `Hello! I am your on-device productivity strategist, running entirely on TaskPulse's local cognitive engine.\n\n`;
+    }
     if (pending.length > 0) {
       response += `You currently have **${pending.length} pending tasks** awaiting focus. Here are your top items:\n`;
       pending.slice(0, 3).forEach((t, i) => {
@@ -323,7 +302,7 @@ Would you like me to map out a Pomodoro sprint sequence for **${firstPending || 
   }
 
   // 3. PRIORITIZATION / EISENHOWER / EAT THE FROG
-  if (msgLower.includes('prioritize') || msgLower.includes('how to start') || msgLower.includes('what to do first') || msgLower.includes('triage') || msgLower.includes('frog') || msgLower.includes('risk') || msgLower.includes('deadline')) {
+  if (msgLower.includes('prioritize') || msgLower.includes('how to start') || msgLower.includes('what to do first') || msgLower.includes('triage') || msgLower.includes('frog') || msgLower.includes('risk') || msgLower.includes('deadline') || msgLower.includes('do now') || msgLower.includes('what should i do') || msgLower.includes('what to do') || msgLower.includes('what now')) {
     if (pending.length === 0) {
       return `### 🗺️ Prioritization Strategy: Clear Runway
       
@@ -757,28 +736,12 @@ app.post('/api/chat', async (req, res) => {
     }
 
     const clientTime = localTime || new Date().toLocaleString('en-IN');
+    const ai = getGeminiClient();
 
-    // Check cache first (avoids API call for repeated questions)
-    const cacheKey = getCacheKey('chat', { message, tasks });
-    const cached = getCached(cacheKey);
-    if (cached) {
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      res.setHeader('Transfer-Encoding', 'chunked');
-      const words = cached.split(/(\s+)/);
-      for (const word of words) {
-        res.write(word);
-        await new Promise(resolve => setTimeout(resolve, 5));
-      }
-      res.end();
-      return;
-    }
-
-    const gemini = getGeminiClient();
-
-    if (!gemini) {
-      // Fallback: local simulation
+    if (!ai) {
+      // Use fallback chat simulation, but stream the chunks back to user
       let text = fallbackChat(message, tasks || [], clientTime, history);
-      text += `\n\n---\n*⚠️ **Offline Simulation Active**: All Gemini keys exhausted. Add more \`GEMINI_API_KEY\` variables or wait for quota reset.*`;
+      text += `\n\n---\n*⚠️ **Offline Simulation Active**: Please add your \`GEMINI_API_KEY\` in your AI Studio secrets to unlock full, unrestricted real-time AI conversation!*`;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Transfer-Encoding', 'chunked');
       
@@ -788,14 +751,6 @@ app.post('/api/chat', async (req, res) => {
         await new Promise(resolve => setTimeout(resolve, 5));
       }
       res.end();
-      return;
-    }
-
-    // Rate limit check — only when Gemini client is available (quota-consuming)
-    const rateCheck = checkRateLimit();
-    if (!rateCheck.allowed) {
-      console.warn(`[RateLimiter] Chat request blocked: ${rateCheck.reason}`);
-      await sendRateLimitError(res, rateCheck.retryAfterMs || 5000, rateCheck.reason || 'Rate limit reached');
       return;
     }
 
@@ -836,13 +791,8 @@ If the user asks you to "organize", "add", "schedule", or "track" a task in chat
       parts: [{ text: message }],
     });
 
-    const { client: ai, key: activeKey } = gemini;
-
-    // Record this API call BEFORE making it (so failed calls still count)
-    recordRequest();
-
-    const responseStream = await ai.models.generateContentStream({
-      model: 'gemini-1.5-flash',
+    const responseStream = await generateContentStreamWithFallback(ai, {
+      defaultModel: 'gemini-3.5-flash',
       contents: contents,
       config: {
         systemInstruction: systemInstruction,
@@ -853,19 +803,12 @@ If the user asks you to "organize", "add", "schedule", or "track" a task in chat
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Transfer-Encoding', 'chunked');
 
-    let accumulatedText = '';
     for await (const chunk of responseStream) {
       if (chunk.text) {
-        accumulatedText += chunk.text;
         res.write(chunk.text);
       }
     }
     res.end();
-
-    // Cache the response (only cache substantial responses)
-    if (accumulatedText.length > 50) {
-      setCache(cacheKey, accumulatedText);
-    }
   } catch (err: any) {
     console.error('Error in /api/chat, falling back to local simulation:', err);
     try {
@@ -873,20 +816,14 @@ If the user asks you to "organize", "add", "schedule", or "track" a task in chat
       const clientTime = localTime || new Date().toLocaleString('en-IN');
       let text = fallbackChat(message || 'hi', tasks || [], clientTime, history);
       
-      const errStr = err.message || err.toString() || '';
-      const isQuotaError = errStr.includes('Quota exceeded') || 
-                           errStr.includes('429') || 
-                           errStr.includes('RESOURCE_EXHAUSTED') || 
-                           errStr.includes('quota') || 
-                           errStr.includes('limit');
+      const isQuotaError = checkIsQuotaError(err);
+
+      const friendlyMessage = getFriendlyErrorMessage(err);
 
       if (isQuotaError) {
-        // Mark all available keys as potentially exhausted on quota errors
-        const keys = getGeminiKeys();
-        keys.forEach(k => markKeyExhausted(k));
-        text += `\n\n---\n*⚠️ **Gemini Quota Exceeded**: Falling back to offline mode. ${keys.length} key(s) exhausted today.*`;
+        text += `\n\n---\n*⚠️ **Gemini Free-Tier Quota Exceeded**: I am automatically falling back to my custom **Local Cognitive Engine** to reply offline. To restore full, real-time unscripted AI chat, please wait for your quota to reset or update your key in the secrets panel!*`;
       } else {
-        text += `\n\n---\n*⚠️ **Gemini API Error (Fallback Active)**: ${err.message || 'Verification Error'}. Running in Local Offline Mode.*`;
+        text += `\n\n---\n*⚠️ **Gemini API Error (Fallback Active)**: ${friendlyMessage}. Running in Local Offline Mode.*`;
       }
       
       if (!res.headersSent) {
@@ -919,29 +856,10 @@ app.post('/api/breakdown', async (req, res) => {
       return;
     }
 
-    // Check cache first
-    const cacheKey = getCacheKey('breakdown', { taskTitle, taskDescription });
-    const cached = getCached(cacheKey);
-    if (cached) {
-      res.json(cached);
-      return;
-    }
-
-    const gemini = getGeminiClient();
-    if (!gemini) {
+    const ai = getGeminiClient();
+    if (!ai) {
       const subtasks = getFallbackSubtasks(taskTitle, taskDescription || '');
       res.json({ subtasks });
-      return;
-    }
-
-    const { client: ai, key: activeKey } = gemini;
-
-    // Rate limit check
-    const rateCheck = checkRateLimit();
-    if (!rateCheck.allowed) {
-      console.warn(`[RateLimiter] Breakdown request blocked: ${rateCheck.reason}`);
-      const subtasks = getFallbackSubtasks(taskTitle, taskDescription || '');
-      res.json({ subtasks, rateLimited: true, retryAfterMs: rateCheck.retryAfterMs });
       return;
     }
 
@@ -961,9 +879,8 @@ You MUST return the response ONLY as a JSON array with the following schema:
 ]
 Do not include any extra text, preamble, or markdown code blocks (like \`\`\`json). Just the raw valid JSON array.`;
 
-    recordRequest();
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+    const response = await generateContentWithFallback(ai, {
+      defaultModel: 'gemini-3.5-flash',
       contents: prompt,
       config: {
         temperature: 0.3,
@@ -971,11 +888,11 @@ Do not include any extra text, preamble, or markdown code blocks (like \`\`\`jso
     });
 
     const text = response.text || '[]';
+    // Clean potential markdown blocks if the model ignored instructions
     const cleanJson = text.replace(/```json/gi, '').replace(/```/g, '').trim();
     
     try {
       const subtasks = JSON.parse(cleanJson);
-      setCache(cacheKey, { subtasks });
       res.json({ subtasks });
     } catch (parseErr) {
       console.warn('Failed to parse subtasks JSON, falling back to manual extract:', text);
@@ -1006,29 +923,10 @@ Do not include any extra text, preamble, or markdown code blocks (like \`\`\`jso
 app.post('/api/schedule', async (req, res) => {
   try {
     const { tasks } = req.body;
-
-    // Check cache first
-    const cacheKey = getCacheKey('schedule', { tasks });
-    const cached = getCached(cacheKey);
-    if (cached) {
-      res.json(cached);
-      return;
-    }
-
-    const gemini = getGeminiClient();
-    if (!gemini) {
+    const ai = getGeminiClient();
+    if (!ai) {
       const schedule = getFallbackSchedule(tasks || []);
       res.json(schedule);
-      return;
-    }
-
-    const { client: ai, key: activeKey } = gemini;
-
-    // Rate limit check — only when Gemini client is available
-    const rateCheck = checkRateLimit();
-    if (!rateCheck.allowed) {
-      console.warn(`[RateLimiter] Schedule request blocked: ${rateCheck.reason}`);
-      res.json({ ...getFallbackSchedule(tasks || []), rateLimited: true });
       return;
     }
 
@@ -1058,9 +956,8 @@ You MUST return the schedule ONLY as a valid JSON object matching the following 
 
 Do not include any extra text or markdown wrapping. Just return raw valid JSON.`;
 
-    recordRequest();
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+    const response = await generateContentWithFallback(ai, {
+      defaultModel: 'gemini-3.5-flash',
       contents: prompt,
       config: {
         temperature: 0.4,
@@ -1072,7 +969,6 @@ Do not include any extra text or markdown wrapping. Just return raw valid JSON.`
 
     try {
       const schedule = JSON.parse(cleanJson);
-      setCache(cacheKey, schedule);
       res.json(schedule);
     } catch (err) {
       console.warn('Failed to parse schedule JSON:', text);
@@ -1093,29 +989,10 @@ Do not include any extra text or markdown wrapping. Just return raw valid JSON.`
 app.post('/api/insights', async (req, res) => {
   try {
     const { tasks } = req.body;
-
-    // Check cache first
-    const cacheKey = getCacheKey('insights', { tasks });
-    const cached = getCached(cacheKey);
-    if (cached) {
-      res.json(cached);
-      return;
-    }
-
-    const gemini = getGeminiClient();
-    if (!gemini) {
+    const ai = getGeminiClient();
+    if (!ai) {
       const insights = getFallbackInsights(tasks || []);
       res.json(insights);
-      return;
-    }
-
-    const { client: ai, key: activeKey } = gemini;
-
-    // Rate limit check — only when Gemini client is available
-    const rateCheck = checkRateLimit();
-    if (!rateCheck.allowed) {
-      console.warn(`[RateLimiter] Insights request blocked: ${rateCheck.reason}`);
-      res.json({ ...getFallbackInsights(tasks || []), rateLimited: true });
       return;
     }
 
@@ -1141,9 +1018,8 @@ You MUST return the insights ONLY as a valid JSON object matching the following 
 
 Only return raw valid JSON. Do not include markdown wraps or preambles.`;
 
-    recordRequest();
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+    const response = await generateContentWithFallback(ai, {
+      defaultModel: 'gemini-3.5-flash',
       contents: prompt,
       config: {
         temperature: 0.5,
@@ -1155,7 +1031,6 @@ Only return raw valid JSON. Do not include markdown wraps or preambles.`;
 
     try {
       const insights = JSON.parse(cleanJson);
-      setCache(cacheKey, { insights });
       res.json(insights);
     } catch (err) {
       console.warn('Failed to parse insights JSON:', text);
@@ -1172,40 +1047,22 @@ Only return raw valid JSON. Do not include markdown wraps or preambles.`;
   }
 });
 
-// 5. QUOTA STATUS ENDPOINT (enhanced with key rotation info)
-app.get('/api/quota-status', (req, res) => {
-  const rateCheck = checkRateLimit();
-  const allKeys = getGeminiKeys();
-  res.json({
-    minuteUsage: `${requestTimestamps.length}/${RATE_LIMIT.maxPerMinute}`,
-    dailyUsage: `${dailyRequestCount}/${RATE_LIMIT.maxPerDay}`,
-    minutePercent: Math.round((requestTimestamps.length / RATE_LIMIT.maxPerMinute) * 100),
-    dailyPercent: Math.round((dailyRequestCount / RATE_LIMIT.maxPerDay) * 100),
-    canMakeRequest: rateCheck.allowed,
-    retryAfterMs: rateCheck.retryAfterMs || 0,
-    cooldownMs: RATE_LIMIT.cooldownMs,
-    cacheSize: responseCache.size,
-    cacheTtlMinutes: CACHE_TTL_MS / 60_000,
-    totalKeys: allKeys.length,
-    availableKeys: getAvailableGeminiKey() ? 1 : 0,
-    exhaustedKeys: exhaustedKeys.size,
-  });
-});
-
-// 6. DIAGNOSTIC ENDPOINT TO VERIFY API KEY STATUS
+// 5. DIAGNOSTIC ENDPOINT TO VERIFY API KEY STATUS
 app.get('/api/key-check', async (req, res) => {
-  const key1 = process.env.GEMINI_API_KEY1 || '';
-  const key2 = process.env.GEMINI_API_KEY || '';
-  const activeKey = key1 || key2;
+  const key1 = process.env.GEMINI_API_KEY2 || '';
+  const key2 = process.env.GEMINI_API_KEY1 || '';
+  const key3 = process.env.GEMINI_API_KEY || '';
+  const activeKey = key1 || key2 || key3;
 
   if (!activeKey || activeKey.trim() === '' || activeKey === 'MY_GEMINI_API_KEY') {
     res.json({
       configured: false,
       status: 'missing',
-      message: 'No valid API key is set in your environment variables. Please add GEMINI_API_KEY or GEMINI_API_KEY1 to your secrets in AI Studio.',
+      message: 'No valid API key is set in your environment variables. Please add GEMINI_API_KEY, GEMINI_API_KEY1, or GEMINI_API_KEY2 to your secrets in AI Studio.',
       diagnostics: {
-        GEMINI_API_KEY_exists: !!key2 && key2 !== 'MY_GEMINI_API_KEY',
-        GEMINI_API_KEY1_exists: !!key1 && key1 !== 'MY_GEMINI_API_KEY',
+        GEMINI_API_KEY_exists: !!key3 && key3 !== 'MY_GEMINI_API_KEY',
+        GEMINI_API_KEY1_exists: !!key2 && key2 !== 'MY_GEMINI_API_KEY',
+        GEMINI_API_KEY2_exists: !!key1 && key1 !== 'MY_GEMINI_API_KEY',
       }
     });
     return;
@@ -1213,15 +1070,14 @@ app.get('/api/key-check', async (req, res) => {
 
   // Attempt to initialize and make a lightweight request to verify if key is working/valid
   try {
-    const gemini = getGeminiClient();
-    if (!gemini) {
+    const ai = getGeminiClient();
+    if (!ai) {
       throw new Error('Could not initialize GoogleGenAI client');
     }
 
-    const ai = gemini.client;
-    // Try a simple ping content request
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+    // Try a simple ping content request with fallback
+    const response = await generateContentWithFallback(ai, {
+      defaultModel: 'gemini-3.5-flash',
       contents: 'Ping: Reply with "pong"',
       config: {
         maxOutputTokens: 10,
@@ -1236,30 +1092,25 @@ app.get('/api/key-check', async (req, res) => {
       diagnostics: {
         key_length: activeKey.length,
         prefix: activeKey.substring(0, 4) + '...',
-        using_variable: key1 ? 'GEMINI_API_KEY1' : 'GEMINI_API_KEY'
+        using_variable: key1 ? 'GEMINI_API_KEY2' : key2 ? 'GEMINI_API_KEY1' : 'GEMINI_API_KEY'
       }
     });
   } catch (err: any) {
     console.error('API key diagnostic test failed:', err);
     
-    const errStr = err.message || err.toString() || '';
-    const isQuotaError = errStr.includes('Quota exceeded') || 
-                         errStr.includes('429') || 
-                         errStr.includes('RESOURCE_EXHAUSTED') || 
-                         errStr.includes('quota') || 
-                         errStr.includes('limit');
+    const isQuotaError = checkIsQuotaError(err);
 
     res.json({
       configured: true,
       status: isQuotaError ? 'quota_exceeded' : 'error',
       message: isQuotaError 
-        ? `Your Gemini API Key is valid, but it has exceeded the daily or minute rate limits on the free tier (15 RPM / 1,500 RPD for gemini-1.5-flash). Please wait for the quota to reset, or update your billing plan in AI Studio.`
-        : `The API key was found but the verification request returned an error: ${err.message}`,
+        ? `Your Gemini API Key is valid, but it has exceeded the daily or minute rate limits on the free tier (15 RPM / 1,500 RPD for gemini-3.5-flash). Please wait for the quota to reset, or update your billing plan in AI Studio.`
+        : `The API key was found but the verification request returned an error: ${getFriendlyErrorMessage(err)}`,
       error_details: err.stack || err.toString(),
       diagnostics: {
         key_length: activeKey.length,
         prefix: activeKey.substring(0, 4) + '...',
-        using_variable: key1 ? 'GEMINI_API_KEY1' : 'GEMINI_API_KEY'
+        using_variable: key1 ? 'GEMINI_API_KEY2' : key2 ? 'GEMINI_API_KEY1' : 'GEMINI_API_KEY'
       }
     });
   }

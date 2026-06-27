@@ -1,6 +1,6 @@
 {
   "name": "TaskPulse",
-  "description": "TaskPulse is an AI-powered deadline agent that autonomously prioritizes workload, generates personalized schedules, breaks down complex tasks, and provides real-time productivity coaching through a conversational Gemini AI interface.",
+  "description": "AI-powered productivity companion that helps you beat deadlines and check chatbot works with the use of api key also",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
