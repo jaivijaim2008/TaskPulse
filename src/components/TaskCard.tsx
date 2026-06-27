@@ -110,7 +110,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
       onDragOver={(e) => handleDragOver(e, task.id)}
       onDrop={(e) => handleDrop(e, task.id)}
       onDragEnd={handleDragEnd}
-      className={`relative bg-slate-900/40 backdrop-blur-md border rounded-xl p-4 sm:p-5 transition-all duration-200 group flex flex-col gap-3 sm:gap-4 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-950/45 select-none ${
+      className={`relative bg-slate-900/40 backdrop-blur-md border rounded-xl p-4 transition-all duration-200 group flex flex-col gap-3 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-950/45 select-none ${
         isEditing ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
       } ${
         task.completed
@@ -154,7 +154,8 @@ export const TaskCard = React.memo<TaskCardProps>(({
           onClick={(e) => e.stopPropagation()}
           className="flex flex-col gap-3 py-1 pl-1.5"
         >
-          <div className="flex flex-col gap-1">              <label className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
               Edit Title
             </label>
             <input
@@ -169,7 +170,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
               Priority
             </label>
             <div className="grid grid-cols-3 gap-1.5">
@@ -178,7 +179,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
                   key={pri}
                   type="button"
                   onClick={() => setQuickEditPriority(pri)}
-                  className={`py-1.5 text-[11px] font-bold uppercase tracking-wider rounded border transition-all cursor-pointer ${
+                  className={`py-1 text-[10px] font-bold uppercase tracking-wider rounded border transition-all cursor-pointer ${
                     quickEditPriority === pri
                       ? pri === 'high'
                         ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 font-extrabold'
@@ -198,13 +199,13 @@ export const TaskCard = React.memo<TaskCardProps>(({
             <button
               type="button"
               onClick={handleCancelQuickEdit}
-              className="text-[11px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-850 transition-colors cursor-pointer"
+              className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-850 transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="text-[11px] font-bold uppercase tracking-wider bg-emerald-400 hover:bg-emerald-300 text-slate-950 px-4 py-1.5 rounded-lg flex items-center gap-1 shadow-md shadow-emerald-950/20 cursor-pointer transition-colors"
+              className="text-[10px] font-bold uppercase tracking-wider bg-emerald-400 hover:bg-emerald-300 text-slate-950 px-3.5 py-1.5 rounded-lg flex items-center gap-1 shadow-md shadow-emerald-950/20 cursor-pointer transition-colors"
             >
               <Save className="w-3 h-3" /> Save
             </button>
@@ -215,9 +216,9 @@ export const TaskCard = React.memo<TaskCardProps>(({
           {/* Header layout */}
           <div className="flex items-start justify-between gap-3 pl-1.5">
             <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-              <h3 className={`text-base sm:text-sm font-bold tracking-tight leading-snug group-hover:text-emerald-400 transition-colors duration-150 flex items-center flex-wrap gap-1.5 ${task.completed ? 'line-through text-slate-500' : 'text-slate-100'}`}>
+              <h3 className={`text-sm font-bold tracking-tight leading-snug group-hover:text-emerald-400 transition-colors duration-150 flex items-center flex-wrap gap-1.5 ${task.completed ? 'line-through text-slate-500' : 'text-slate-100'}`}>
                 {isWithinTwoHours && (
-                  <span className="inline-flex items-center gap-1 bg-rose-500/15 text-rose-400 text-[10px] font-extrabold px-2 py-0.5 rounded-md border border-rose-500/30 animate-pulse" title="Due in less than 2 hours!">
+                  <span className="inline-flex items-center gap-1 bg-rose-500/15 text-rose-400 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border border-rose-500/30 animate-pulse" title="Due in less than 2 hours!">
                     <span className="relative flex h-1.5 w-1.5">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-500"></span>
@@ -236,14 +237,14 @@ export const TaskCard = React.memo<TaskCardProps>(({
                     style={{ width: `${durationPercent}%` }}
                   />
                 </div>
-                <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono leading-none">
+                <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono leading-none">
                   <span>Est: <strong className={task.completed ? 'text-slate-500 font-medium' : 'text-emerald-400 font-bold'}>{task.estimatedDuration}m</strong></span>
                   <span>{formattedRemaining} left today ({durationPercent}%)</span>
                 </div>
               </div>
 
               {task.description && (
-                <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed mt-0.5 font-medium">
+                <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed mt-0.5 font-medium">
                   {task.description}
                 </p>
               )}
@@ -264,7 +265,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
                 />
               </svg>
               <span
-                className="absolute inset-0 flex items-center justify-center text-[10px] font-extrabold text-center leading-none uppercase tracking-wider font-mono"
+                className="absolute inset-0 flex items-center justify-center text-[9px] font-extrabold text-center leading-none uppercase tracking-wider font-mono"
                 style={{ color: task.completed ? '#6B7280' : urg.color }}
               >
                 {task.completed ? <Check className="w-3.5 h-3.5 text-slate-400 stroke-[3]" /> : urg.label.replace(' left', '')}
@@ -275,7 +276,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
           {/* Checklist Step List Block */}
           {task.subtasks && task.subtasks.length > 0 && (
             <div className="pl-1.5 ml-2 py-1.5 flex flex-col gap-2 bg-slate-950/30 border border-slate-850/60 p-2.5 rounded-xl">
-              <div className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center justify-between">
+              <div className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center justify-between">
                 <span>Checklist ({task.subtasks.filter(s => s.completed).length}/{task.subtasks.length})</span>
                 <span className="text-emerald-400 font-mono">{Math.round((task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100)}%</span>
               </div>
@@ -287,7 +288,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
                       e.stopPropagation();
                       handleToggleSubtask(task.id, s.id, e);
                     }}
-                    className="flex items-center gap-2 text-xs text-slate-300 hover:text-emerald-400 transition-colors py-0.5 cursor-pointer"
+                    className="flex items-center gap-2 text-[11px] text-slate-300 hover:text-emerald-400 transition-colors py-0.5 cursor-pointer"
                   >
                     {s.completed ? (
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
@@ -295,7 +296,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
                       <Circle className="w-3.5 h-3.5 text-slate-500 hover:text-emerald-400 flex-shrink-0" />
                     )}
                     <span className={`truncate ${s.completed ? 'line-through text-slate-500 font-medium' : 'font-medium'}`}>
-                      {s.title}                <span className="text-slate-500 font-mono text-[10px]">({s.duration || 15}m)</span>
+                      {s.title} <span className="text-slate-500 font-mono text-[9px]">({s.duration || 15}m)</span>
                     </span>
                   </div>
                 ))}
@@ -305,13 +306,15 @@ export const TaskCard = React.memo<TaskCardProps>(({
 
           {/* Metadata information line */}
           <div className="flex items-center justify-between gap-2 pl-1.5 flex-wrap">
-            <div className="flex items-center gap-1.5 flex-wrap">              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1"
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
                 style={{ backgroundColor: catTheme.bg, color: catTheme.text }}
               >
                 <span>{catTheme.emoji}</span>
                 <span>{catTheme.label}</span>
               </span>
-              <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full ${
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
                 task.priority === 'high'
                   ? 'bg-rose-500/15 text-rose-400'
                   : task.priority === 'medium'
@@ -321,7 +324,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
                 {task.priority.toUpperCase()}
               </span>
             </div>
-            <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+            <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
               <Clock className="w-3 h-3" /> {formatTime}
             </span>
           </div>
@@ -346,7 +349,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
                     e.stopPropagation();
                     handleBreakdownTask(task, e);
                   }}
-                  className="text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/20 hover:border-emerald-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-all duration-150 font-bold"
+                  className="text-[11px] text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/20 hover:border-emerald-500/30 px-2 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-all duration-150 font-bold"
                   title="Use TaskPulse's local cognitive engine to break this task down into bite-sized actionable checklists"
                 >
                   <Bot className="w-3 h-3" /> Breakdown
