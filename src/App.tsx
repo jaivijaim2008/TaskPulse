@@ -144,6 +144,82 @@ export default function App() {
   const [speechSupported, setSpeechSupported] = useState(true);
   const recognitionRef = useRef<any>(null);
 
+  // Resize & Split Layout States
+  const [sidebarWidth, setSidebarWidth] = useState<number>(380);
+  const [sidebarHeight, setSidebarHeight] = useState<number>(300);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [dragType, setDragType] = useState<'width' | 'height' | null>(null);
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  const [mobileSplitMode, setMobileSplitMode] = useState<boolean>(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (dragType === 'width') {
+        const nextWidth = e.clientX;
+        if (nextWidth >= 280 && nextWidth <= 700) {
+          setSidebarWidth(nextWidth);
+        }
+      } else if (dragType === 'height') {
+        const layoutBody = document.getElementById('layout-body');
+        if (layoutBody) {
+          const rect = layoutBody.getBoundingClientRect();
+          const nextHeight = e.clientY - rect.top;
+          if (nextHeight >= 160 && nextHeight <= window.innerHeight - 200) {
+            setSidebarHeight(nextHeight);
+          }
+        }
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 0) return;
+      const touch = e.touches[0];
+      if (dragType === 'width') {
+        const nextWidth = touch.clientX;
+        if (nextWidth >= 240 && nextWidth <= window.innerWidth - 40) {
+          setSidebarWidth(nextWidth);
+        }
+      } else if (dragType === 'height') {
+        const layoutBody = document.getElementById('layout-body');
+        if (layoutBody) {
+          const rect = layoutBody.getBoundingClientRect();
+          const nextHeight = touch.clientY - rect.top;
+          if (nextHeight >= 160 && nextHeight <= window.innerHeight - 200) {
+            setSidebarHeight(nextHeight);
+          }
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      setDragType(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleMouseUp);
+    };
+  }, [isDragging, dragType]);
+
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -1019,6 +1095,23 @@ export default function App() {
             <Menu className="w-5 h-5" />
           </button>
 
+          <button
+            type="button"
+            onClick={() => {
+              setMobileSplitMode(prev => !prev);
+              // Ensure sidebar is open when switching to split mode
+              setMobileSidebarOpen(true);
+            }}
+            className="md:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-emerald-400 hover:text-emerald-300 hover:bg-slate-850 transition-colors focus:outline-none cursor-pointer flex items-center gap-1"
+            title={mobileSplitMode ? "Switch to Floating Drawer Mode" : "Switch to Split-Screen Stack Mode"}
+          >
+            {mobileSplitMode ? (
+              <span className="text-[10px] font-extrabold uppercase tracking-wider">📱 Overlay Drawer</span>
+            ) : (
+              <span className="text-[10px] font-extrabold uppercase tracking-wider">📋 Split View</span>
+            )}
+          </button>
+
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-400 to-indigo-500 relative flex items-center justify-center border border-white/10 shadow-lg shadow-emerald-500/5">
             <span className="text-xs">⚡</span>
           </div>
@@ -1081,10 +1174,14 @@ export default function App() {
       </header>
 
       {/* BODY LAYOUT */}
-      <div id="layout-body" className="grid grid-cols-1 md:grid-cols-[380px_1fr] flex-1 h-[calc(100vh-64px)] overflow-hidden relative z-10">
+      <div 
+        id="layout-body" 
+        className={`flex ${isMobile && mobileSplitMode ? 'flex-col' : 'flex-col md:flex-row'} flex-1 h-[calc(100vh-64px)] overflow-hidden relative z-10`}
+        style={{ userSelect: isDragging ? 'none' : 'auto' }}
+      >
         
         {/* Mobile Sidebar overlay backdrop */}
-        {mobileSidebarOpen && (
+        {mobileSidebarOpen && !mobileSplitMode && (
           <div 
             className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-30 md:hidden"
             onClick={() => setMobileSidebarOpen(false)}
@@ -1094,9 +1191,22 @@ export default function App() {
         {/* LEFT PANEL: Task Sidebar */}
         <aside 
           id="sidebar" 
-          className={`bg-[#070A13]/95 md:bg-slate-900/10 border-r border-slate-850/80 flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] fixed md:static top-16 bottom-0 left-0 z-40 w-[320px] md:w-auto transition-transform duration-300 transform ${
-            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          className={`bg-[#070A13]/95 md:bg-slate-900/10 ${
+            isMobile && mobileSplitMode 
+              ? 'border-b border-slate-850/80 w-full relative h-auto' 
+              : 'border-r border-slate-850/80 h-full fixed md:static top-16 bottom-0 left-0 z-40 transition-transform duration-300'
+          } flex flex-col overflow-hidden max-h-[calc(100vh-64px)] ${
+            isMobile && !mobileSplitMode 
+              ? (mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0') 
+              : 'translate-x-0'
           }`}
+          style={
+            isMobile
+              ? mobileSplitMode
+                ? { height: `${sidebarHeight}px`, flexShrink: 0 }
+                : { width: `${sidebarWidth}px`, maxWidth: 'calc(100vw - 40px)', flexShrink: 0 }
+              : { width: `${sidebarWidth}px`, flexShrink: 0 }
+          }
         >
           {/* Header & Task Creation Form */}
           <TaskForm
@@ -1143,16 +1253,16 @@ export default function App() {
           </div>
 
           {/* Sorting preferences selector */}
-          <div className="px-5 py-2.5 border-b border-slate-850/40 bg-slate-900/10 flex items-center justify-between text-xs flex-shrink-0">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Priority layout</span>
-            <div className="flex bg-slate-950 border border-slate-850 p-0.5 rounded-lg">
+          <div className="px-5 py-2.5 border-b border-slate-850/40 bg-slate-900/20 flex items-center justify-between text-xs flex-shrink-0">
+            <span className="text-slate-200 font-extrabold uppercase tracking-widest text-[10px]">Priority Layout</span>
+            <div className="flex bg-slate-950 border border-slate-800 p-0.5 rounded-lg shadow-inner">
               <button
                 type="button"
                 onClick={() => setSortBy('auto')}
-                className={`px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                   sortBy === 'auto'
-                    ? 'bg-emerald-400 text-slate-950 font-bold shadow-md'
-                    : 'text-slate-500 hover:text-slate-300'
+                    ? 'bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 font-black shadow-md shadow-emerald-950/20'
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900'
                 }`}
                 title="Sort automatically by status and deadline urgency"
               >
@@ -1161,10 +1271,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setSortBy('custom')}
-                className={`px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                   sortBy === 'custom'
-                    ? 'bg-emerald-400 text-slate-950 font-bold shadow-md'
-                    : 'text-slate-500 hover:text-slate-300'
+                    ? 'bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 font-black shadow-md shadow-emerald-950/20'
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900'
                 }`}
                 title="Custom order. Drag and drop tasks in any sequence"
               >
@@ -1254,8 +1364,55 @@ export default function App() {
           </div>
         </aside>
 
+        {/* RESIZABLE DIVIDER HANDLES */}
+        {isMobile ? (
+          mobileSplitMode ? (
+            /* Vertical resizing on mobile (↕ Arrows) */
+            <div
+              className="flex md:hidden items-center justify-center h-4 hover:h-5 bg-slate-950/40 hover:bg-emerald-500/10 active:bg-emerald-500/30 border-y border-slate-850/80 cursor-row-resize select-none transition-all relative z-20 flex-shrink-0"
+              onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); setDragType('height'); }}
+              onTouchStart={() => { setIsDragging(true); setDragType('height'); }}
+            >
+              <div className="flex items-center justify-center bg-slate-900 border border-slate-800 h-6 px-3 rounded-full shadow-md shadow-black/40">
+                <span className="text-emerald-400 font-extrabold text-xs select-none cursor-row-resize flex items-center gap-1.5">
+                  <span className="text-sm">↕</span>
+                  <span className="text-[9px] text-slate-300 font-extrabold uppercase tracking-widest pl-0.5">Adjust Height</span>
+                </span>
+              </div>
+            </div>
+          ) : (
+            /* Horizontal resizing for Mobile Drawer when open (←→ Arrows) */
+            mobileSidebarOpen && (
+              <div
+                className="fixed top-16 bottom-0 z-50 w-3 hover:w-4 cursor-col-resize select-none transition-all active:bg-emerald-500/10 flex items-center justify-center"
+                style={{ left: `calc(${sidebarWidth}px - 6px)`, maxWidth: 'calc(100vw - 46px)' }}
+                onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); setDragType('width'); }}
+                onTouchStart={() => { setIsDragging(true); setDragType('width'); }}
+              >
+                <div className="flex items-center justify-center bg-slate-900 border border-slate-800 w-6 h-12 rounded-full shadow-lg shadow-black/50">
+                  <span className="text-emerald-400 font-extrabold text-[12px] select-none cursor-col-resize">←→</span>
+                </div>
+              </div>
+            )
+          )
+        ) : (
+          /* Horizontal resizing on Desktop (←→ Arrows) */
+          <div
+            className="hidden md:flex items-center justify-center w-2 hover:w-2.5 hover:bg-emerald-500/10 active:bg-emerald-500/20 border-r border-slate-850/80 cursor-col-resize select-none transition-all relative group h-full z-20 flex-shrink-0"
+            onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); setDragType('width'); }}
+            onTouchStart={() => { setIsDragging(true); setDragType('width'); }}
+          >
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center bg-slate-900 border border-slate-800 w-5 py-3 rounded-full shadow-md shadow-black/40 group-hover:border-emerald-500/30 transition-colors">
+              <span className="text-emerald-400 font-extrabold text-[10px] select-none cursor-col-resize flex flex-col items-center leading-none">
+                <span>←</span>
+                <span>→</span>
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* RIGHT PANEL: Main Tab Area */}
-        <main id="main-content" className="flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] bg-transparent">
+        <main id="main-content" className="flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] bg-transparent flex-1 min-w-0">
           
           {/* Main Panel Header Banner */}
           <div className="px-6 py-4 border-b border-slate-850 bg-slate-900/10 flex items-center justify-between flex-shrink-0 flex-wrap gap-3">
