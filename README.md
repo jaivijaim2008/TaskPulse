@@ -2,7 +2,7 @@
 
 [![Live Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Google%20Cloud%20Run-4285F4?style=for-the-badge)](https://taskpulse-478025274381.asia-southeast1.run.app)
 [![Hackathon](https://img.shields.io/badge/Vibe2Ship-Coding%20Ninjas%20×%20Google-FF6B35?style=for-the-badge)](https://blockseblock.com)
-[![Gemini](https://img.shields.io/badge/Powered%20by-Gemini%202.0%20Flash-8E75B2?style=for-the-badge&logo=google)](https://aistudio.google.com)
+[![Gemini](https://img.shields.io/badge/Powered%20by-Gemini%201.5%20Flash-8E75B2?style=for-the-badge&logo=google)](https://aistudio.google.com)
 
 **An AI-powered productivity companion that proactively helps you plan, prioritize, and complete tasks before deadlines are missed.**
 
@@ -26,8 +26,8 @@ TaskPulse is an AI-powered deadline agent built on Gemini 2.0 Flash. It autonomo
 ## 🛠️ Tech Stack
 | Layer | Technology |
 |---|---|
-| Frontend | React 18, TypeScript, Vite |
-| AI Engine | Google Gemini 2.0 Flash API |
+| Frontend | React 19, TypeScript, Vite |
+| AI Engine | Google Gemini 1.5 Flash API |
 | Backend | Node.js, Express, TypeScript |
 | Deployment | Google Cloud Run |
 | Dev Platform | Google AI Studio |
@@ -35,7 +35,7 @@ TaskPulse is an AI-powered deadline agent built on Gemini 2.0 Flash. It autonomo
 ## 🌐 Google Technologies Used
 | Technology | Usage |
 |---|---|
-| Google Gemini 2.0 Flash | Core AI for prioritization, scheduling, breakdown, agent chat |
+| Google Gemini 1.5 Flash | Core AI for prioritization, scheduling, breakdown, agent chat |
 | Google AI Studio | Development environment and deployment pipeline |
 | Google Cloud Run | Serverless container deployment |
 

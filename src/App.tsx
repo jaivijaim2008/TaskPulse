@@ -2,18 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Task, ChatMessage, ScheduleData, InsightItem, Subtask } from './types';
 import {
   Sparkles,
-  ClipboardList,
   Flame,
   Search,
-  Bot,
-  Plus,
   RefreshCw,
   Calendar,
   Activity,
-  Menu,
-  Download
+  Menu
 } from 'lucide-react';
-import { getUrgencyDetails, getCategoryTheme } from './utils/helpers';
 import { TaskForm } from './components/TaskForm';
 import { TaskCard } from './components/TaskCard';
 import { ChatPanel } from './components/ChatPanel';
