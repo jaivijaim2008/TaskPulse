@@ -105,7 +105,8 @@ export default function App() {
 
   // Search & Mobile & Popup States
   const [searchQuery, setSearchQuery] = useState('');
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
+  const [mobileView, setMobileView] = useState<'tasks' | 'chat' | 'schedule' | 'insights'>('tasks');
   const [focusedTask, setFocusedTask] = useState<Task | null>(null);
   const [showUnfinishedModal, setShowUnfinishedModal] = useState(false);
   const [sortBy, setSortBy] = useState<'auto' | 'custom'>('auto');
@@ -560,6 +561,8 @@ export default function App() {
     setIsLoading(true);
     setAgentStatus('thinking');
     setActiveTab('chat');
+    setMobileView('chat');
+    setMobileSidebarOpen(false);
 
     const aiMessageId = (Date.now() + 1).toString();
     setChatMessages(prev => [
@@ -606,6 +609,8 @@ export default function App() {
     setIsLoading(true);
     setAgentStatus('thinking');
     setActiveTab('chat');
+    setMobileView('chat');
+    setMobileSidebarOpen(false);
 
     const userMessageId = Date.now().toString();
     setChatMessages(prev => [
@@ -690,6 +695,8 @@ export default function App() {
     setIsLoading(true);
     setAgentStatus('thinking');
     setActiveTab('schedule');
+    setMobileView('schedule');
+    setMobileSidebarOpen(false);
 
     try {
       const response = await fetch('/api/schedule', {
@@ -726,6 +733,8 @@ export default function App() {
     setIsLoading(true);
     setAgentStatus('thinking');
     setActiveTab('insights');
+    setMobileView('insights');
+    setMobileSidebarOpen(false);
 
     try {
       const response = await fetch('/api/insights', {
@@ -787,6 +796,8 @@ export default function App() {
     setChatMessages(prev => [...prev, userMessage, aiMessagePlaceholder]);
     setIsLoading(true);
     setAgentStatus('thinking');
+    setMobileView('chat');
+    setMobileSidebarOpen(false);
 
     try {
       const response = await fetch('/api/chat', {
@@ -863,16 +874,48 @@ export default function App() {
   }).length;
   const completedCount = currentTasks.filter(t => t.completed).length;
 
+  // ============ SWIPE GESTURE HANDLER ============
+  const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
+
+  const handleTouchStart = React.useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchEnd = React.useCallback((e: React.TouchEvent) => {
+    // Don't trigger swipe if touch started inside the sidebar
+    const target = e.target as HTMLElement;
+    if (target.closest('#sidebar')) return;
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+    // Only trigger if horizontal swipe is dominant (> 50px) and larger than vertical
+    if (Math.abs(deltaX) < 50 || Math.abs(deltaY) > Math.abs(deltaX)) return;
+    const tabOrder: Array<'tasks' | 'chat' | 'schedule' | 'insights'> = ['tasks', 'chat', 'schedule', 'insights'];
+    const currentIdx = tabOrder.indexOf(mobileView);
+    if (deltaX < 0 && currentIdx < tabOrder.length - 1) {
+      // Swipe left → next tab
+      const next = tabOrder[currentIdx + 1];
+      setMobileView(next);
+      if (next === 'tasks') { setMobileSidebarOpen(true); } else { setMobileSidebarOpen(false); setActiveTab(next); }
+    } else if (deltaX > 0 && currentIdx > 0) {
+      // Swipe right → previous tab
+      const prev = tabOrder[currentIdx - 1];
+      setMobileView(prev);
+      if (prev === 'tasks') { setMobileSidebarOpen(true); } else { setMobileSidebarOpen(false); setActiveTab(prev); }
+    }
+  }, [mobileView]);
+
   return (
-    <div id="taskpulse-app" className="flex flex-col h-screen bg-[#070A13] text-slate-100 font-sans selection:bg-emerald-500/30 relative overflow-hidden">
+    <div id="taskpulse-app" className="flex flex-col h-screen bg-[#070A13] text-slate-100 font-sans selection:bg-emerald-500/30 relative overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       
       {/* Dynamic ambient glass lighting spots */}
       <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-emerald-500/5 blur-[120px] pointer-events-none animate-pulse duration-[12s]" />
       <div className="absolute bottom-[10%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-indigo-500/5 blur-[150px] pointer-events-none animate-pulse duration-[18s]" />
 
       {/* HEADER */}
-      <header id="header" className="bg-slate-900/40 backdrop-blur-xl border-b border-slate-850 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center gap-3">
+      <header id="header" className="bg-slate-900/40 backdrop-blur-xl border-b border-slate-850 px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between sticky top-0 z-50">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => setMobileSidebarOpen(prev => !prev)}
@@ -885,12 +928,12 @@ export default function App() {
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-400 to-indigo-500 relative flex items-center justify-center border border-white/10 shadow-lg shadow-emerald-500/5">
             <span className="text-xs">⚡</span>
           </div>
-          <span className="font-extrabold text-lg tracking-tight">
+          <span className="font-extrabold text-base sm:text-lg tracking-tight">
             Task<span className="text-emerald-400">Pulse</span>
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {pendingCount > 0 && (
             <button
               onClick={() => setShowUnfinishedModal(true)}
@@ -904,12 +947,12 @@ export default function App() {
           )}
 
           {apiKeyStatus === null ? (
-            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-full text-xs">
+            <div className="hidden sm:flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-full text-xs">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
               <span className="text-slate-400 font-bold">Connecting Engine...</span>
             </div>
           ) : apiKeyStatus.status === 'working' ? (
-            <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 rounded-full text-xs" title={apiKeyStatus.message}>
+            <div className="hidden sm:flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 rounded-full text-xs" title={apiKeyStatus.message}>
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -918,7 +961,7 @@ export default function App() {
             </div>
           ) : apiKeyStatus.status === 'quota_exceeded' ? (
             <div 
-              className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-rose-500/15 transition-all animate-pulse" 
+              className="hidden sm:flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-rose-500/15 transition-all animate-pulse" 
               title={`${apiKeyStatus.message}. Click for diagnostic details.`} 
               onClick={() => alert(`Gemini API Quota Exceeded:\n\n${apiKeyStatus.message}\n\nTaskPulse is running in high-performance Local Simulation Mode until your API quota resets or you switch keys.`)}
             >
@@ -927,7 +970,7 @@ export default function App() {
             </div>
           ) : apiKeyStatus.status === 'error' ? (
             <div 
-              className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-amber-500/15 transition-all" 
+              className="hidden sm:flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-amber-500/15 transition-all" 
               title={`${apiKeyStatus.message}. Click for diagnostic details.`} 
               onClick={() => alert(`Gemini Key Diagnostic Error:\n\n${apiKeyStatus.message}\n\nRunning in local fallback simulator.`)}
             >
@@ -935,7 +978,7 @@ export default function App() {
               <span className="text-amber-400 font-bold flex items-center gap-1">Gemini Error ⚠️</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-full text-xs" title={`${apiKeyStatus.message}. Running in high-performance local simulation mode.`}>
+            <div className="hidden sm:flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-full text-xs" title={`${apiKeyStatus.message}. Running in high-performance local simulation mode.`}>
               <span className="w-2 h-2 rounded-full bg-slate-400" />
               <span className="text-slate-400 font-bold">Local Cognitive Engine</span>
             </div>
@@ -944,7 +987,7 @@ export default function App() {
       </header>
 
       {/* BODY LAYOUT */}
-      <div id="layout-body" className="grid grid-cols-1 md:grid-cols-[380px_1fr] flex-1 h-[calc(100vh-64px)] overflow-hidden relative z-10">
+      <div id="layout-body" className="grid grid-cols-1 md:grid-cols-[380px_1fr] flex-1 h-[calc(100vh-56px)] sm:h-[calc(100vh-64px)] overflow-hidden relative z-10">
         
         {/* Mobile Sidebar overlay backdrop */}
         {mobileSidebarOpen && (
@@ -1238,6 +1281,51 @@ export default function App() {
           handlePlanDay={handlePlanDay}
         />
       )}
+
+      {/* MOBILE BOTTOM NAVIGATION BAR */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 pb-[env(safe-area-inset-bottom)]">
+        <div className="flex items-stretch">
+          {([
+            { key: 'tasks' as const, icon: '📋', label: 'Tasks', count: pendingCount },
+            { key: 'chat' as const, icon: '💬', label: 'Chat', count: null },
+            { key: 'schedule' as const, icon: '📅', label: 'Schedule', count: null },
+            { key: 'insights' as const, icon: '💡', label: 'Insights', count: null },
+          ]).map((item) => {
+            const isActive = item.key === 'tasks' ? mobileView === 'tasks' : (item.key === mobileView && mobileView !== 'tasks');
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => {
+                  setMobileView(item.key);
+                  if (item.key === 'tasks') {
+                    setMobileSidebarOpen(true);
+                  } else {
+                    setMobileSidebarOpen(false);
+                    setActiveTab(item.key as 'chat' | 'schedule' | 'insights');
+                  }
+                }}
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-all relative cursor-pointer ${
+                  isActive
+                    ? 'text-emerald-400'
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                {isActive && (
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-emerald-400 rounded-full" />
+                )}
+                <span className="text-base leading-none">{item.icon}</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider">{item.label}</span>
+                {item.key === 'tasks' && item.count !== null && item.count > 0 && (
+                  <span className="absolute top-1 right-3 min-w-[16px] h-4 flex items-center justify-center bg-rose-500 text-white text-[8px] font-bold rounded-full px-1">
+                    {item.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }
