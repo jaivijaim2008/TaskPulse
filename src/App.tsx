@@ -11,7 +11,8 @@ import {
   Calendar,
   Activity,
   Menu,
-  Download
+  Download,
+  LogOut
 } from 'lucide-react';
 import { getUrgencyDetails, getCategoryTheme } from './utils/helpers';
 import { TaskForm } from './components/TaskForm';
@@ -22,6 +23,17 @@ import { InsightsPanel } from './components/InsightsPanel';
 import { TaskModal } from './components/TaskModal';
 import { UnfinishedModal } from './components/UnfinishedModal';
 import { DiagnosticModal } from './components/DiagnosticModal';
+import { AuthScreen } from './components/AuthScreen';
+import { 
+  auth, 
+  db, 
+  signOut, 
+  onAuthStateChanged, 
+  doc, 
+  setDoc, 
+  onSnapshot,
+  User 
+} from './lib/firebase';
 
 // ============ INTERACTION FEEDBACK UTILITIES ============
 const playCompletionSound = () => {
@@ -109,6 +121,130 @@ const getYesterdayDateString = () => {
 export default function App() {
   // ============ STATE ============
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [guestMode, setGuestMode] = useState<boolean>(() => {
+    return localStorage.getItem('tp_guest_mode') === 'true';
+  });
+
+  const lastSyncedRef = useRef({
+    tasks: '',
+    chatHistory: '',
+    scheduleData: '',
+    insights: ''
+  });
+
+  const isFirestoreReadyRef = useRef(false);
+
+  const getDemoTasksList = React.useCallback((): Task[] => {
+    const now = new Date();
+    const yesterdayStr = getYesterdayDateString();
+    const d1 = new Date(now); d1.setHours(d1.getHours() + 6);
+    const d2 = new Date(now); d2.setHours(d2.getHours() + 12);
+    const d3 = new Date(now); d3.setDate(d3.getDate() + 3);
+
+    return [
+      {
+        id: 'demo-1',
+        title: 'Launch SaaS Product MVP 🚀',
+        description: 'Publish product on ProductHunt, send announcement email, and track real-time traffic analytics.',
+        deadline: d1.toISOString(),
+        category: 'work',
+        priority: 'high',
+        completed: false,
+        estimatedDuration: 60,
+        subtasks: [
+          { id: 'sub-demo-1-1', title: 'Prepare high-quality screenshots & banners', completed: true, duration: 15 },
+          { id: 'sub-demo-1-2', title: 'Draft launch announcement copy', completed: false, duration: 15 },
+          { id: 'sub-demo-1-3', title: 'Publish ProductHunt post & share on social channels', completed: false, duration: 30 }
+        ],
+        createdAt: now.toISOString(),
+        position: 0,
+        recurring: 'none'
+      },
+      {
+        id: 'demo-2',
+        title: 'Daily Coding Habit 💻',
+        description: 'Solve one coding challenge and commit to main repository.',
+        deadline: d2.toISOString(),
+        category: 'study',
+        priority: 'medium',
+        completed: false,
+        estimatedDuration: 30,
+        subtasks: [],
+        createdAt: now.toISOString(),
+        position: 1,
+        recurring: 'daily',
+        streak: 4,
+        lastCompletedDate: yesterdayStr
+      },
+      {
+        id: 'demo-3',
+        title: 'Organize Workspace 🧹',
+        description: 'Cable management, dust the desk, and arrange desk lights for better ergonomics.',
+        deadline: d3.toISOString(),
+        category: 'personal',
+        priority: 'low',
+        completed: false,
+        estimatedDuration: 45,
+        subtasks: [],
+        createdAt: now.toISOString(),
+        position: 2,
+        recurring: 'none'
+      }
+    ];
+  }, []);
+
+  const saveTasks = React.useCallback((newTasksOrFn: Task[] | ((prev: Task[]) => Task[])) => {
+    setTasks(prev => {
+      const resolved = typeof newTasksOrFn === 'function' ? newTasksOrFn(prev) : newTasksOrFn;
+      localStorage.setItem('tp_tasks', JSON.stringify(resolved));
+      
+      if (auth.currentUser) {
+        setDoc(doc(db, 'users', auth.currentUser.uid), { tasks: resolved }, { merge: true })
+          .catch(err => console.error("Error syncing tasks to Firestore:", err));
+      }
+      return resolved;
+    });
+  }, []);
+
+  const saveChat = React.useCallback((newChatOrFn: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
+    setChatMessages(prev => {
+      const resolved = typeof newChatOrFn === 'function' ? newChatOrFn(prev) : newChatOrFn;
+      localStorage.setItem('tp_chat_history', JSON.stringify(resolved));
+      
+      if (auth.currentUser) {
+        setDoc(doc(db, 'users', auth.currentUser.uid), { chatHistory: resolved }, { merge: true })
+          .catch(err => console.error("Error syncing chat to Firestore:", err));
+      }
+      return resolved;
+    });
+  }, []);
+
+  const saveSchedule = React.useCallback((newSchedule: ScheduleData | null) => {
+    setScheduleData(newSchedule);
+    if (newSchedule) {
+      localStorage.setItem('tp_schedule', JSON.stringify(newSchedule));
+    } else {
+      localStorage.removeItem('tp_schedule');
+    }
+    
+    if (auth.currentUser) {
+      setDoc(doc(db, 'users', auth.currentUser.uid), { scheduleData: newSchedule }, { merge: true })
+        .catch(err => console.error("Error syncing schedule to Firestore:", err));
+    }
+  }, []);
+
+  const saveInsights = React.useCallback((newInsights: InsightItem[]) => {
+    setInsights(newInsights);
+    localStorage.setItem('tp_insights', JSON.stringify(newInsights));
+    
+    if (auth.currentUser) {
+      setDoc(doc(db, 'users', auth.currentUser.uid), { insights: newInsights }, { merge: true })
+        .catch(err => console.error("Error syncing insights to Firestore:", err));
+    }
+  }, []);
+
   const [apiKeyStatus, setApiKeyStatus] = useState<{ configured: boolean; status: string; message: string; diagnostics?: any } | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
@@ -133,7 +269,9 @@ export default function App() {
   const [quickEditPriority, setQuickEditPriority] = useState<'low' | 'medium' | 'high'>('medium');
 
   // AI & Chat States
-  const [activeTab, setActiveTab] = useState<'chat' | 'schedule' | 'insights'>('chat');
+  const [activeTab, setActiveTab] = useState<'tasks' | 'chat' | 'schedule' | 'insights'>(() => {
+    return (typeof window !== 'undefined' && window.innerWidth < 768) ? 'tasks' : 'chat';
+  });
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -248,9 +386,197 @@ export default function App() {
     }
   }, []);
 
-  // ============ INITIALIZATION ============
+  // ============ INITIALIZATION & FIREBASE AUTH ============
   useEffect(() => {
-    // Load tasks from localStorage with safe fallback guards
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setIsAuthLoading(false);
+      
+      if (user) {
+        setGuestMode(false);
+        localStorage.removeItem('tp_guest_mode');
+        
+        // Bind to Firestore document
+        const userDocRef = doc(db, 'users', user.uid);
+        const unbind = onSnapshot(userDocRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            
+            // Perform habit sweeping on the Firestore tasks if needed
+            const incomingTasks = data.tasks || [];
+            const currentDate = getLocalDateString();
+            const yesterdayStr = getYesterdayDateString();
+            let hasChanges = false;
+            
+            const sweptTasks = incomingTasks.map((t: Task) => {
+              if (t.recurring === 'daily') {
+                if (t.completed && t.lastCompletedDate !== currentDate) {
+                  hasChanges = true;
+                  let nextStreak = t.streak || 0;
+                  if (t.lastCompletedDate !== yesterdayStr) {
+                    nextStreak = 0;
+                  }
+                  return { ...t, completed: false, streak: nextStreak };
+                }
+                if (!t.completed && t.lastCompletedDate !== currentDate && t.lastCompletedDate !== yesterdayStr && (t.streak || 0) > 0) {
+                  hasChanges = true;
+                  return { ...t, streak: 0 };
+                }
+              }
+              return t;
+            });
+
+            const sweptTasksStr = JSON.stringify(sweptTasks);
+            if (sweptTasksStr !== lastSyncedRef.current.tasks) {
+              lastSyncedRef.current.tasks = sweptTasksStr;
+              setTasks(sweptTasks);
+              localStorage.setItem('tp_tasks', sweptTasksStr);
+            }
+
+            if (hasChanges) {
+              setDoc(userDocRef, { tasks: sweptTasks }, { merge: true })
+                .catch(err => console.error("Error saving swept tasks to Firestore:", err));
+            }
+
+            const incomingChat = data.chatHistory || [];
+            const incomingChatStr = JSON.stringify(incomingChat);
+            if (incomingChatStr !== lastSyncedRef.current.chatHistory) {
+              lastSyncedRef.current.chatHistory = incomingChatStr;
+              setChatMessages(incomingChat);
+              localStorage.setItem('tp_chat_history', incomingChatStr);
+            }
+
+            const incomingSchedule = data.scheduleData || null;
+            const incomingScheduleStr = JSON.stringify(incomingSchedule);
+            if (incomingScheduleStr !== lastSyncedRef.current.scheduleData) {
+              lastSyncedRef.current.scheduleData = incomingScheduleStr;
+              setScheduleData(incomingSchedule);
+              if (incomingSchedule) {
+                localStorage.setItem('tp_schedule', incomingScheduleStr);
+              } else {
+                localStorage.removeItem('tp_schedule');
+              }
+            }
+
+            const incomingInsights = data.insights || [];
+            const incomingInsightsStr = JSON.stringify(incomingInsights);
+            if (incomingInsightsStr !== lastSyncedRef.current.insights) {
+              lastSyncedRef.current.insights = incomingInsightsStr;
+              setInsights(incomingInsights);
+              localStorage.setItem('tp_insights', incomingInsightsStr);
+            }
+
+            // Flag that we have fully loaded this user's data from Firestore
+            isFirestoreReadyRef.current = true;
+          } else {
+            // First time registered/logged-in user, seed with fresh default demo tasks only to keep account isolated and clean
+            const initialTasks = getDemoTasksList();
+            const initialChat = [
+              {
+                id: 'welcome',
+                sender: 'ai',
+                text: `### Welcome to **TaskPulse AI**! ⚡\n\nI'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use our custom on-device Cognitive Engine to help you plan your workload.\n\n**What I can do for you:**\n*   **Deconstruct complex tasks**: Click **"Breakdown"** on any task card to generate interactive subtasks.\n*   **Build optimized schedules**: Click **"Plan Day"** or the button below to generate an hour-by-hour planner.\n*   **Analyze workload bottlenecks**: Get real-time productivity insights by clicking **"Full Analysis"**.\n\nWhat would you like to accomplish first?`,
+                timestamp: new Date().toLocaleTimeString()
+              }
+            ];
+
+            const initialTasksStr = JSON.stringify(initialTasks);
+            const initialChatStr = JSON.stringify(initialChat);
+
+            lastSyncedRef.current.tasks = initialTasksStr;
+            lastSyncedRef.current.chatHistory = initialChatStr;
+            lastSyncedRef.current.scheduleData = 'null';
+            lastSyncedRef.current.insights = '[]';
+
+            // Mark ready and save to firestore
+            isFirestoreReadyRef.current = true;
+            setTasks(initialTasks);
+            setChatMessages(initialChat);
+            setScheduleData(null);
+            setInsights([]);
+
+            setDoc(userDocRef, {
+              tasks: initialTasks,
+              chatHistory: initialChat,
+              scheduleData: null,
+              insights: []
+            });
+          }
+        });
+        
+        return () => unbind();
+      } else {
+        // User is logged out.
+        isFirestoreReadyRef.current = false;
+        const isGuest = localStorage.getItem('tp_guest_mode') === 'true';
+        if (!isGuest) {
+          // Reset states
+          setTasks([]);
+          setChatMessages([]);
+          setScheduleData(null);
+          setInsights([]);
+          // Clean storage to prevent data leakage between sessions
+          localStorage.removeItem('tp_tasks');
+          localStorage.removeItem('tp_chat_history');
+          localStorage.removeItem('tp_schedule');
+          localStorage.removeItem('tp_insights');
+          lastSyncedRef.current = {
+            tasks: '',
+            chatHistory: '',
+            scheduleData: '',
+            insights: ''
+          };
+        }
+      }
+    });
+    
+    return unsubscribe;
+  }, [getDemoTasksList]);
+
+  // Bidirectional real-time state synchronization guard & effect
+  useEffect(() => {
+    if (!currentUser || !isFirestoreReadyRef.current) return;
+
+    const payload: any = {};
+    const tasksStr = JSON.stringify(tasks);
+    const chatStr = JSON.stringify(chatMessages);
+    const scheduleStr = JSON.stringify(scheduleData);
+    const insightsStr = JSON.stringify(insights);
+
+    let needsSync = false;
+
+    if (tasksStr !== lastSyncedRef.current.tasks) {
+      lastSyncedRef.current.tasks = tasksStr;
+      payload.tasks = tasks;
+      needsSync = true;
+    }
+    if (chatStr !== lastSyncedRef.current.chatHistory) {
+      lastSyncedRef.current.chatHistory = chatStr;
+      payload.chatHistory = chatMessages;
+      needsSync = true;
+    }
+    if (scheduleStr !== lastSyncedRef.current.scheduleData) {
+      lastSyncedRef.current.scheduleData = scheduleStr;
+      payload.scheduleData = scheduleData;
+      needsSync = true;
+    }
+    if (insightsStr !== lastSyncedRef.current.insights) {
+      lastSyncedRef.current.insights = insightsStr;
+      payload.insights = insights;
+      needsSync = true;
+    }
+
+    if (needsSync) {
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      setDoc(userDocRef, payload, { merge: true })
+        .catch(err => console.error("Error syncing state to Firestore:", err));
+    }
+  }, [tasks, chatMessages, scheduleData, insights, currentUser]);
+
+  // Local/Guest Initialization
+  useEffect(() => {
+    if (currentUser) return; // Managed by Firestore effect above
+
     const savedTasks = localStorage.getItem('tp_tasks');
     let loadedTasks: Task[] = [];
     if (savedTasks) {
@@ -269,53 +595,20 @@ export default function App() {
     const currentDate = getLocalDateString();
 
     if (loadedTasks.length > 0) {
-      // Habit sweep & streak auto-resets on day transitions
       let hasChanges = false;
       const sweptTasks = loadedTasks.map(t => {
         if (t.recurring === 'daily') {
-          // If task is completed and the last completion was NOT today, reset completed to false for the new day
           if (t.completed && t.lastCompletedDate !== currentDate) {
             hasChanges = true;
-            // Check if they missed yesterday to maintain/break streak
             let nextStreak = t.streak || 0;
             if (t.lastCompletedDate !== yesterdayStr) {
-              nextStreak = 0; // missed yesterday, streak broken on new day
+              nextStreak = 0;
             }
-            return {
-              ...t,
-              completed: false,
-              streak: nextStreak
-            };
+            return { ...t, completed: false, streak: nextStreak };
           }
-          // If NOT completed, but today is a new day and they missed yesterday, reset streak to 0
           if (!t.completed && t.lastCompletedDate !== currentDate && t.lastCompletedDate !== yesterdayStr && (t.streak || 0) > 0) {
             hasChanges = true;
-            return {
-              ...t,
-              streak: 0
-            };
-          }
-        } else if (t.recurring === 'weekly') {
-          if (t.completed && t.lastCompletedDate) {
-            try {
-              const lastDate = new Date(t.lastCompletedDate);
-              const diffTime = Math.abs(now.getTime() - lastDate.getTime());
-              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-              if (diffDays >= 7) {
-                hasChanges = true;
-                let nextStreak = t.streak || 0;
-                if (diffDays > 14) {
-                  nextStreak = 0; // missed a whole week, streak broken
-                }
-                return {
-                  ...t,
-                  completed: false,
-                  streak: nextStreak
-                };
-              }
-            } catch (err) {
-              console.error('Error checking weekly task duration:', err);
-            }
+            return { ...t, streak: 0 };
           }
         }
         return t;
@@ -328,61 +621,7 @@ export default function App() {
         setTasks(loadedTasks);
       }
     } else {
-      // Load premium default sample tasks if it is first visit
-      const d1 = new Date(now); d1.setHours(d1.getHours() + 6);
-      const d2 = new Date(now); d2.setHours(d2.getHours() + 12);
-      const d3 = new Date(now); d3.setDate(d3.getDate() + 3);
-
-      const defaultTasks: Task[] = [
-        {
-          id: '1',
-          title: 'Deploy Cloud Run Application',
-          description: 'Deploy the main application image to Cloud Run containers and configure secrets in AI Studio UI.',
-          deadline: d1.toISOString(),
-          category: 'work',
-          priority: 'high',
-          completed: false,
-          estimatedDuration: 60,
-          subtasks: [
-            { id: 'sub-1-1', title: 'Review container configuration', completed: true, duration: 15 },
-            { id: 'sub-1-2', title: 'Configure environment variables', completed: false, duration: 15 },
-            { id: 'sub-1-3', title: 'Run deploy script', completed: false, duration: 30 }
-          ],
-          createdAt: now.toISOString(),
-          position: 0,
-          recurring: 'none'
-        },
-        {
-          id: '2',
-          title: 'Daily Coding Habit',
-          description: 'Solve one coding challenge and commit to main repository.',
-          deadline: d2.toISOString(),
-          category: 'study',
-          priority: 'medium',
-          completed: false,
-          estimatedDuration: 30,
-          subtasks: [],
-          createdAt: now.toISOString(),
-          position: 1,
-          recurring: 'daily',
-          streak: 4,
-          lastCompletedDate: yesterdayStr
-        },
-        {
-          id: '3',
-          title: 'Organize Home Workspace',
-          description: 'Cable management, clean up desk, organize references.',
-          deadline: d3.toISOString(),
-          category: 'personal',
-          priority: 'low',
-          completed: false,
-          estimatedDuration: 90,
-          subtasks: [],
-          createdAt: now.toISOString(),
-          position: 2,
-          recurring: 'none'
-        }
-      ];
+      const defaultTasks = getDemoTasksList();
       setTasks(defaultTasks);
       localStorage.setItem('tp_tasks', JSON.stringify(defaultTasks));
     }
@@ -393,7 +632,7 @@ export default function App() {
     tomorrow.setHours(23, 59, 0, 0);
     setTaskDeadline(tomorrow.toISOString().slice(0, 16));
 
-    // Welcome messages / Restore saved chat history
+    // Restore saved chat history
     const savedChat = localStorage.getItem('tp_chat_history');
     if (savedChat) {
       try {
@@ -411,7 +650,27 @@ export default function App() {
         }
       ]);
     }
-  }, []);
+
+    // Restore saved schedule for Guest
+    const savedSchedule = localStorage.getItem('tp_schedule');
+    if (savedSchedule) {
+      try {
+        setScheduleData(JSON.parse(savedSchedule));
+      } catch (e) {}
+    } else {
+      setScheduleData(null);
+    }
+
+    // Restore saved insights for Guest
+    const savedInsights = localStorage.getItem('tp_insights');
+    if (savedInsights) {
+      try {
+        setInsights(JSON.parse(savedInsights));
+      } catch (e) {}
+    } else {
+      setInsights([]);
+    }
+  }, [currentUser, getDemoTasksList]);
 
   // Fetch API key status from backend on mount
   useEffect(() => {
@@ -544,8 +803,7 @@ export default function App() {
       newTask,
       ...currentTasks.map((t, idx) => ({ ...t, position: t.position !== undefined ? t.position + 1 : idx + 1 }))
     ];
-    setTasks(updated);
-    localStorage.setItem('tp_tasks', JSON.stringify(updated));
+    saveTasks(updated);
 
     setTaskTitle('');
     setTaskDesc('');
@@ -558,8 +816,7 @@ export default function App() {
   }, [taskTitle, taskDesc, taskDeadline, taskCategory, taskPriority, taskDuration, taskRecurring, tasks]);
 
   const handleClearAllTasks = React.useCallback(() => {
-    setTasks([]);
-    localStorage.setItem('tp_tasks', JSON.stringify([]));
+    saveTasks([]);
     setSelectedTaskId(null);
     setFocusedTask(null);
   }, []);
@@ -622,8 +879,7 @@ export default function App() {
       }
     ];
 
-    setTasks(demoTasks);
-    localStorage.setItem('tp_tasks', JSON.stringify(demoTasks));
+    saveTasks(demoTasks);
     setSelectedTaskId('demo-1');
     setFocusedTask(demoTasks[0]);
   }, []);
@@ -632,8 +888,7 @@ export default function App() {
     e.stopPropagation();
     const currentTasks = Array.isArray(tasks) ? tasks : [];
     const updated = currentTasks.filter(t => t.id !== id);
-    setTasks(updated);
-    localStorage.setItem('tp_tasks', JSON.stringify(updated));
+    saveTasks(updated);
     if (selectedTaskId === id) {
       setSelectedTaskId(null);
     }
@@ -705,8 +960,7 @@ export default function App() {
       }
       return t;
     });
-    setTasks(updated);
-    localStorage.setItem('tp_tasks', JSON.stringify(updated));
+    saveTasks(updated);
   }, [tasks]);
 
   const handleToggleSubtask = React.useCallback((taskId: string, subtaskId: string, e: React.MouseEvent) => {
@@ -729,8 +983,7 @@ export default function App() {
       }
       return t;
     });
-    setTasks(updated);
-    localStorage.setItem('tp_tasks', JSON.stringify(updated));
+    saveTasks(updated);
   }, [tasks]);
 
   // ============ QUICK INLINE EDIT HANDLERS ============
@@ -758,8 +1011,7 @@ export default function App() {
       return t;
     });
 
-    setTasks(updated);
-    localStorage.setItem('tp_tasks', JSON.stringify(updated));
+    saveTasks(updated);
     setInlineEditingTaskId(null);
 
     if (focusedTask && focusedTask.id === taskId) {
@@ -822,8 +1074,7 @@ export default function App() {
         position: index
       }));
 
-      setTasks(updatedTasks);
-      localStorage.setItem('tp_tasks', JSON.stringify(updatedTasks));
+      saveTasks(updatedTasks);
       
       playBreakdownSound();
       triggerVibration();
@@ -1173,6 +1424,33 @@ export default function App() {
   }).length;
   const completedCount = currentTasks.filter(t => t.completed).length;
 
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-[#070913] text-slate-100 flex flex-col justify-center items-center font-sans">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-400 to-indigo-500 flex items-center justify-center border border-white/10 shadow-lg mb-4 animate-bounce">
+          <span className="text-xl">⚡</span>
+        </div>
+        <div className="w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest animate-pulse">Initializing Pulse Engine...</p>
+      </div>
+    );
+  }
+
+  if (!currentUser && !guestMode) {
+    return (
+      <AuthScreen 
+        onSuccess={() => {
+          setGuestMode(false);
+          localStorage.removeItem('tp_guest_mode');
+        }}
+        onContinueAsGuest={() => {
+          setGuestMode(true);
+          localStorage.setItem('tp_guest_mode', 'true');
+        }}
+      />
+    );
+  }
+
   return (
     <div id="taskpulse-app" className="flex flex-col h-screen bg-[#070A13] text-slate-100 font-sans selection:bg-emerald-500/30 relative overflow-hidden">
       
@@ -1183,32 +1461,6 @@ export default function App() {
       {/* HEADER */}
       <header id="header" className="bg-slate-900/40 backdrop-blur-xl border-b border-slate-850 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setMobileSidebarOpen(prev => !prev)}
-            className="md:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-emerald-400 hover:text-emerald-300 hover:bg-slate-850 transition-colors focus:outline-none cursor-pointer"
-            title="Toggle Sidebar"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setMobileSplitMode(prev => !prev);
-              // Ensure sidebar is open when switching to split mode
-              setMobileSidebarOpen(true);
-            }}
-            className="md:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-emerald-400 hover:text-emerald-300 hover:bg-slate-850 transition-colors focus:outline-none cursor-pointer flex items-center gap-1"
-            title={mobileSplitMode ? "Switch to Floating Drawer Mode" : "Switch to Split-Screen Stack Mode"}
-          >
-            {mobileSplitMode ? (
-              <span className="text-[10px] font-extrabold uppercase tracking-wider">📱 Overlay Drawer</span>
-            ) : (
-              <span className="text-[10px] font-extrabold uppercase tracking-wider">📋 Split View</span>
-            )}
-          </button>
-
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-400 to-indigo-500 relative flex items-center justify-center border border-white/10 shadow-lg shadow-emerald-500/5">
             <span className="text-xs">⚡</span>
           </div>
@@ -1289,48 +1541,109 @@ export default function App() {
               <span className="text-slate-400 font-bold">Local Cognitive Engine</span>
             </div>
           )}
+
+          {/* User Sign In / Sign Out Section */}
+          {currentUser ? (
+            <div className="flex items-center gap-3 border-l border-slate-800 pl-3">
+              <div className="hidden md:flex flex-col items-end text-[10px]">
+                <span className="text-slate-300 font-bold max-w-[120px] truncate">{currentUser.email}</span>
+                <span className="text-emerald-400 font-medium tracking-wide">Cloud Sync Active</span>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await signOut(auth);
+                    setGuestMode(false);
+                    localStorage.removeItem('tp_guest_mode');
+                  } catch (e) {
+                    console.error("Sign out failed", e);
+                  }
+                }}
+                className="flex items-center gap-1.5 bg-slate-850 hover:bg-slate-800 border border-slate-750 text-slate-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                title="Sign Out"
+              >
+                <LogOut className="w-3.5 h-3.5 text-slate-400" />
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 border-l border-slate-800 pl-3">
+              <span className="hidden md:inline text-[10px] text-slate-500 font-bold uppercase tracking-wider">Guest</span>
+              <button
+                onClick={() => {
+                  setGuestMode(false);
+                  localStorage.removeItem('tp_guest_mode');
+                }}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer shadow-md hover:shadow-emerald-500/10"
+                title="Sign in with your email to sync data across all devices"
+              >
+                🔑 <span className="hidden sm:inline">Sign In / Sync</span>
+                <span className="sm:hidden">Sync</span>
+              </button>
+            </div>
+          )}
         </div>
       </header>
+
+      {/* MOBILE TAB NAVIGATION (VISIBLE ONLY ON MOBILE) */}
+      {isMobile && (
+        <div className="bg-slate-900/90 backdrop-blur-md border-b border-slate-850 flex items-center justify-around sticky top-16 z-30 flex-shrink-0">
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={`flex-1 py-3 text-center text-[11px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              activeTab === 'tasks' ? 'text-emerald-400 border-emerald-400 bg-slate-950/20' : 'text-slate-400 border-transparent hover:text-slate-200'
+            }`}
+          >
+            📋 Tasks
+          </button>
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex-1 py-3 text-center text-[11px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              activeTab === 'chat' ? 'text-emerald-400 border-emerald-400 bg-slate-950/20' : 'text-slate-400 border-transparent hover:text-slate-200'
+            }`}
+          >
+            💬 Chat
+          </button>
+          <button
+            onClick={() => { setActiveTab('schedule'); if (!scheduleData) handlePlanDay(); }}
+            className={`flex-1 py-3 text-center text-[11px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              activeTab === 'schedule' ? 'text-emerald-400 border-emerald-400 bg-slate-950/20' : 'text-slate-400 border-transparent hover:text-slate-200'
+            }`}
+          >
+            📅 Schedule
+          </button>
+          <button
+            onClick={() => { setActiveTab('insights'); if (insights.length === 0) handleFullAnalysis(); }}
+            className={`flex-1 py-3 text-center text-[11px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+              activeTab === 'insights' ? 'text-emerald-400 border-emerald-400 bg-slate-950/20' : 'text-slate-400 border-transparent hover:text-slate-200'
+            }`}
+          >
+            💡 Insights
+          </button>
+        </div>
+      )}
 
       {/* BODY LAYOUT */}
       <div 
         id="layout-body" 
-        className={`flex ${isMobile && mobileSplitMode ? 'flex-col' : 'flex-col md:flex-row'} flex-1 h-[calc(100vh-64px)] overflow-hidden relative z-10`}
+        className={`flex flex-col md:flex-row flex-1 ${isMobile ? 'h-[calc(100vh-112px)]' : 'h-[calc(100vh-64px)]'} overflow-hidden relative z-10`}
         style={{ userSelect: isDragging ? 'none' : 'auto' }}
       >
         
-        {/* Mobile Sidebar overlay backdrop */}
-        {mobileSidebarOpen && !mobileSplitMode && (
-          <div 
-            className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-30 md:hidden"
-            onClick={() => setMobileSidebarOpen(false)}
-          />
-        )}
-
         {/* LEFT PANEL: Task Sidebar */}
         <aside 
           id="sidebar" 
-          className={`bg-[#070A13]/95 md:bg-slate-900/10 ${
-            isMobile && mobileSplitMode 
-              ? 'border-b border-slate-850/80 w-full relative h-auto' 
-              : 'border-r border-slate-850/80 h-full fixed md:static top-16 bottom-0 left-0 z-40 transition-transform duration-300'
-          } flex flex-col overflow-hidden max-h-[calc(100vh-64px)] ${
-            isMobile && !mobileSplitMode 
-              ? (mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0') 
-              : 'translate-x-0'
+          className={`bg-[#070A13]/95 md:bg-slate-900/10 border-r border-slate-850/80 flex flex-col overflow-hidden ${
+            isMobile 
+              ? (activeTab === 'tasks' ? 'w-full h-full static block' : 'hidden') 
+              : 'h-full static'
           }`}
-          style={
-            isMobile
-              ? mobileSplitMode
-                ? { height: `${sidebarHeight}px`, flexShrink: 0 }
-                : { width: `${sidebarWidth}px`, maxWidth: 'calc(100vw - 40px)', flexShrink: 0 }
-              : { width: `${sidebarWidth}px`, flexShrink: 0 }
-          }
+          style={!isMobile ? { width: `${sidebarWidth}px`, flexShrink: 0 } : undefined}
         >
           {/* Top Resizable Section */}
           <div 
             className="flex flex-col flex-shrink-0 overflow-y-auto custom-scrollbar border-b border-slate-850/40"
-            style={{ height: `${topSidebarHeight}px`, minHeight: '120px', maxHeight: '75vh' }}
+            style={{ height: isMobile ? 'auto' : `${topSidebarHeight}px`, minHeight: '120px', maxHeight: isMobile ? '55vh' : '75vh' }}
           >
             {/* Header & Task Creation Form */}
             <TaskForm
@@ -1534,39 +1847,8 @@ export default function App() {
           </div>
         </aside>
 
-        {/* RESIZABLE DIVIDER HANDLES */}
-        {isMobile ? (
-          mobileSplitMode ? (
-            /* Vertical resizing on mobile (↕ Arrows) */
-            <div
-              className="flex md:hidden items-center justify-center h-4 hover:h-5 bg-slate-950/40 hover:bg-emerald-500/10 active:bg-emerald-500/30 border-y border-slate-850/80 cursor-row-resize select-none transition-all relative z-20 flex-shrink-0"
-              onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); setDragType('height'); }}
-              onTouchStart={() => { setIsDragging(true); setDragType('height'); }}
-            >
-              <div className="flex items-center justify-center bg-slate-900 border border-slate-800 h-6 px-3 rounded-full shadow-md shadow-black/40">
-                <span className="text-emerald-400 font-extrabold text-xs select-none cursor-row-resize flex items-center gap-1.5">
-                  <span className="text-sm">↕</span>
-                  <span className="text-[9px] text-slate-300 font-extrabold uppercase tracking-widest pl-0.5">Adjust Height</span>
-                </span>
-              </div>
-            </div>
-          ) : (
-            /* Horizontal resizing for Mobile Drawer when open (←→ Arrows) */
-            mobileSidebarOpen && (
-              <div
-                className="fixed top-16 bottom-0 z-50 w-3 hover:w-4 cursor-col-resize select-none transition-all active:bg-emerald-500/10 flex items-center justify-center"
-                style={{ left: `calc(${sidebarWidth}px - 6px)`, maxWidth: 'calc(100vw - 46px)' }}
-                onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); setDragType('width'); }}
-                onTouchStart={() => { setIsDragging(true); setDragType('width'); }}
-              >
-                <div className="flex items-center justify-center bg-slate-900 border border-slate-800 w-6 h-12 rounded-full shadow-lg shadow-black/50">
-                  <span className="text-emerald-400 font-extrabold text-[12px] select-none cursor-col-resize">←→</span>
-                </div>
-              </div>
-            )
-          )
-        ) : (
-          /* Horizontal resizing on Desktop (←→ Arrows) */
+        {/* RESIZABLE DIVIDER HANDLES (Desktop Only) */}
+        {!isMobile && (
           <div
             className="hidden md:flex items-center justify-center w-2 hover:w-2.5 hover:bg-emerald-500/10 active:bg-emerald-500/20 border-r border-slate-850/80 cursor-col-resize select-none transition-all relative group h-full z-20 flex-shrink-0"
             onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); setDragType('width'); }}
@@ -1579,7 +1861,7 @@ export default function App() {
               </span>
             </div>
 
-            {/* Lower Grab Handle (next to bottom task list / stats-summary area) */}
+            {/* Lower Grab Handle */}
             <div className="absolute bottom-16 left-1/2 -translate-x-1/2 flex items-center justify-center bg-slate-900 border border-slate-800 w-6 h-10 rounded-full shadow-md shadow-black/40 group-hover:border-emerald-500/30 transition-colors cursor-col-resize">
               <span className="text-emerald-400 font-black text-sm select-none">
                 ↔
@@ -1589,10 +1871,17 @@ export default function App() {
         )}
 
         {/* RIGHT PANEL: Main Tab Area */}
-        <main id="main-content" className="flex flex-col h-full overflow-hidden max-h-[calc(100vh-64px)] bg-transparent flex-1 min-w-0">
+        <main 
+          id="main-content" 
+          className={`flex flex-col overflow-hidden bg-transparent flex-1 min-w-0 ${
+            isMobile 
+              ? (activeTab !== 'tasks' ? 'w-full h-full static' : 'hidden') 
+              : 'h-full max-h-[calc(100vh-64px)]'
+          }`}
+        >
           
-          {/* Main Panel Header Banner */}
-          <div className="px-6 py-4 border-b border-slate-850 bg-slate-900/10 flex items-center justify-between flex-shrink-0 flex-wrap gap-3">
+          {/* Main Panel Header Banner (Desktop Only) */}
+          <div className="hidden md:flex px-6 py-4 border-b border-slate-850 bg-slate-900/10 items-center justify-between flex-shrink-0 flex-wrap gap-3">
             <div>
               <h1 className="text-base font-bold text-slate-100 flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-emerald-400" /> TaskPulse Workspace
@@ -1620,8 +1909,8 @@ export default function App() {
             <div className="absolute top-0 bottom-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-shimmer" />
           </div>
 
-          {/* Navigation Tabs */}
-          <div className="px-6 border-b border-slate-850/60 bg-slate-900/5 flex gap-2 flex-shrink-0">
+          {/* Navigation Tabs (Desktop Only) */}
+          <div className="hidden md:flex px-6 border-b border-slate-850/60 bg-slate-900/5 gap-2 flex-shrink-0">
             <button
               onClick={() => setActiveTab('chat')}
               className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${

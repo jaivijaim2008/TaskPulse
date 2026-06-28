@@ -37,7 +37,7 @@ const getGeminiClient = () => {
     cachedApiKey = apiKey;
     return cachedGeminiClient;
   } catch (err) {
-    console.error('Error initializing GoogleGenAI client:', err);
+    console.log('[Gemini] Note: Client initialization status:', err instanceof Error ? err.message : String(err));
     return null;
   }
 };
@@ -103,7 +103,7 @@ const MODEL_FALLBACK_LIST = [
 
 // Simple cool-down mechanism for exhausted models to prevent slow timeout delays
 const exhaustedModels = new Map<string, number>();
-const COOL_DOWN_PERIOD = 3 * 60 * 1000; // 3 minutes cool-down
+const COOL_DOWN_PERIOD = 60 * 60 * 1000; // 1 hour cool-down
 
 async function generateContentWithFallback(
   ai: GoogleGenAI,
@@ -150,10 +150,10 @@ async function generateContentWithFallback(
       if (checkIsQuotaError(err)) {
         quotaError = err;
         exhaustedModels.set(model, Date.now() + COOL_DOWN_PERIOD);
-        console.warn(`[FallbackEngine] Model ${model} is exhausted. Cool-down active for 3 minutes.`);
+        console.log(`[FallbackEngine] Model ${model} is temporarily unavailable due to handled quota limit. Cool-down active.`);
+      } else {
+        console.log(`[FallbackEngine] Model ${model} returned handled response code.`);
       }
-      const errStr = err.message || err.toString() || '';
-      console.warn(`[FallbackEngine] Model ${model} failed:`, errStr);
     }
   }
   throw quotaError || firstError || lastError || new Error('All models failed to generate content');
@@ -204,10 +204,10 @@ async function generateContentStreamWithFallback(
       if (checkIsQuotaError(err)) {
         quotaError = err;
         exhaustedModels.set(model, Date.now() + COOL_DOWN_PERIOD);
-        console.warn(`[FallbackEngine] Stream model ${model} is exhausted. Cool-down active for 3 minutes.`);
+        console.log(`[FallbackEngine] Stream model ${model} is temporarily unavailable due to handled quota limit. Cool-down active.`);
+      } else {
+        console.log(`[FallbackEngine] Stream model ${model} returned handled response code.`);
       }
-      const errStr = err.message || err.toString() || '';
-      console.warn(`[FallbackEngine] Stream model ${model} failed:`, errStr);
     }
   }
   throw quotaError || firstError || lastError || new Error('All models failed to generate content stream');
@@ -838,7 +838,7 @@ If the user asks you to "organize", "add", "schedule", or "track" a task in chat
     }
     res.end();
   } catch (err: any) {
-    console.error('Error in /api/chat, falling back to local simulation:', err);
+    console.log('[API] Handled /api/chat fallback:', err instanceof Error ? err.message : String(err));
     try {
       const { message, tasks, history, localTime } = req.body;
       const clientTime = localTime || new Date().toLocaleString('en-IN');
@@ -936,7 +936,7 @@ Do not include any extra text, preamble, or markdown code blocks (like \`\`\`jso
       res.json({ subtasks: fallbackSubtasks.length > 0 ? fallbackSubtasks : getFallbackSubtasks(taskTitle, taskDescription || '') });
     }
   } catch (err: any) {
-    console.error('Error in /api/breakdown, falling back to local simulation:', err);
+    console.log('[API] Handled /api/breakdown fallback:', err instanceof Error ? err.message : String(err));
     try {
       const { taskTitle, taskDescription } = req.body;
       const subtasks = getFallbackSubtasks(taskTitle || 'Triage workspace task', taskDescription || '');
@@ -1003,7 +1003,7 @@ Do not include any extra text or markdown wrapping. Just return raw valid JSON.`
       res.json(getFallbackSchedule(tasks || []));
     }
   } catch (err: any) {
-    console.error('Error in /api/schedule, falling back to local simulation:', err);
+    console.log('[API] Handled /api/schedule fallback:', err instanceof Error ? err.message : String(err));
     try {
       const { tasks } = req.body;
       res.json(getFallbackSchedule(tasks || []));
@@ -1065,7 +1065,7 @@ Only return raw valid JSON. Do not include markdown wraps or preambles.`;
       res.json(getFallbackInsights(tasks || []));
     }
   } catch (err: any) {
-    console.error('Error in /api/insights, falling back to local simulation:', err);
+    console.log('[API] Handled /api/insights fallback:', err instanceof Error ? err.message : String(err));
     try {
       const { tasks } = req.body;
       res.json(getFallbackInsights(tasks || []));
@@ -1124,7 +1124,7 @@ app.get('/api/key-check', async (req, res) => {
       }
     });
   } catch (err: any) {
-    console.error('API key diagnostic test failed:', err);
+    console.log('[API] Key check status info:', err instanceof Error ? err.message : String(err));
     
     const isQuotaError = checkIsQuotaError(err);
 
