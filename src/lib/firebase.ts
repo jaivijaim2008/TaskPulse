@@ -39,6 +39,42 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
+// In-memory access token cache
+let cachedAccessToken: string | null = null;
+
+export const setCachedAccessToken = (token: string | null) => {
+  cachedAccessToken = token;
+};
+
+export const getCachedAccessToken = (): string | null => {
+  return cachedAccessToken;
+};
+
+// Listen to auth changes to invalidate the cache
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    cachedAccessToken = null;
+  }
+});
+
+// Helper to connect Google Calendar or renew access token
+export const connectGoogleCalendar = async (): Promise<string | null> => {
+  const provider = new GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/calendar');
+  provider.addScope('https://www.googleapis.com/auth/calendar.events');
+  try {
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) {
+      cachedAccessToken = credential.accessToken;
+      return credential.accessToken;
+    }
+  } catch (error) {
+    console.error("Failed to authorize Google Calendar:", error);
+  }
+  return null;
+};
+
 export {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,

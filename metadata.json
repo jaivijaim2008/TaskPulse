@@ -1,6 +1,6 @@
 {
   "name": "TaskPulse",
-  "description": "AI-powered productivity companion that helps you beat deadlines and check chatbot works with the use of api key also",
+  "description": "AI-powered productivity companion that helps you organize tasks, chat with an AI assistant, plan your schedule, and sync seamlessly with Google Calendar.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

@@ -285,105 +285,6 @@ export default function App() {
   const [speechSupported, setSpeechSupported] = useState(true);
   const recognitionRef = useRef<any>(null);
 
-  // Resize & Split Layout States
-  const [sidebarWidth, setSidebarWidth] = useState<number>(380);
-  const [sidebarHeight, setSidebarHeight] = useState<number>(300);
-  const [topSidebarHeight, setTopSidebarHeight] = useState<number>(340);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [dragType, setDragType] = useState<'width' | 'height' | 'topSidebarHeight' | null>(null);
-  const [isMobile, setIsMobile] = useState<boolean>(false);
-  const [mobileSplitMode, setMobileSplitMode] = useState<boolean>(false);
-
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (dragType === 'width') {
-        const nextWidth = e.clientX;
-        if (nextWidth >= 280 && nextWidth <= 700) {
-          setSidebarWidth(nextWidth);
-        }
-      } else if (dragType === 'height') {
-        const layoutBody = document.getElementById('layout-body');
-        if (layoutBody) {
-          const rect = layoutBody.getBoundingClientRect();
-          const nextHeight = e.clientY - rect.top;
-          if (nextHeight >= 160 && nextHeight <= window.innerHeight - 200) {
-            setSidebarHeight(nextHeight);
-          }
-        }
-      } else if (dragType === 'topSidebarHeight') {
-        const sidebar = document.getElementById('sidebar');
-        if (sidebar) {
-          const rect = sidebar.getBoundingClientRect();
-          const nextHeight = e.clientY - rect.top;
-          if (nextHeight >= 100 && nextHeight <= window.innerHeight - 150) {
-            setTopSidebarHeight(nextHeight);
-          }
-        }
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (!dragType) return;
-      e.preventDefault();
-      if (e.touches.length === 0) return;
-      const touch = e.touches[0];
-      if (dragType === 'width') {
-        const nextWidth = touch.clientX;
-        if (nextWidth >= 240 && nextWidth <= window.innerWidth - 40) {
-          setSidebarWidth(nextWidth);
-        }
-      } else if (dragType === 'height') {
-        const layoutBody = document.getElementById('layout-body');
-        if (layoutBody) {
-          const rect = layoutBody.getBoundingClientRect();
-          const nextHeight = touch.clientY - rect.top;
-          if (nextHeight >= 160 && nextHeight <= window.innerHeight - 200) {
-            setSidebarHeight(nextHeight);
-          }
-        }
-      } else if (dragType === 'topSidebarHeight') {
-        const sidebar = document.getElementById('sidebar');
-        if (sidebar) {
-          const rect = sidebar.getBoundingClientRect();
-          const nextHeight = touch.clientY - rect.top;
-          if (nextHeight >= 100 && nextHeight <= window.innerHeight - 150) {
-            setTopSidebarHeight(nextHeight);
-          }
-        }
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-      setDragType(null);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
-    window.addEventListener('touchend', handleMouseUp);
-    window.addEventListener('touchcancel', handleMouseUp);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleMouseUp);
-      window.removeEventListener('touchcancel', handleMouseUp);
-    };
-  }, [isDragging, dragType]);
-
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -1492,7 +1393,7 @@ export default function App() {
           {pendingCount > 0 && (
             <button
               onClick={() => setShowUnfinishedModal(true)}
-              className="flex items-center gap-1 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 hover:border-rose-500/35 text-rose-400 px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer"
+              className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 hover:border-rose-500/35 text-rose-400 px-3.5 py-2 sm:px-3.5 sm:py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer min-h-[44px] sm:min-h-0 touch-manipulation"
               title="You have unfinished tasks requiring your attention!"
             >
               <Flame className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
@@ -1502,14 +1403,14 @@ export default function App() {
           )}
 
           {apiKeyStatus === null ? (
-            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-xs">
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-xs min-h-[44px] sm:min-h-0">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
               <span className="text-slate-400 font-bold hidden sm:inline">Connecting Engine...</span>
               <span className="text-slate-400 font-bold sm:hidden">Connecting</span>
             </div>
           ) : apiKeyStatus.status === 'working' ? (
             <div 
-              className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-emerald-500/15 transition-all" 
+              className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-2 sm:px-3.5 sm:py-1.5 rounded-full text-xs cursor-pointer hover:bg-emerald-500/15 transition-all min-h-[44px] sm:min-h-0 touch-manipulation" 
               title={`${apiKeyStatus.message}. Click for diagnostic details.`}
               onClick={() => setDiagnosticModal({
                 isOpen: true,
@@ -1528,7 +1429,7 @@ export default function App() {
             </div>
           ) : apiKeyStatus.status === 'quota_exceeded' ? (
             <div 
-              className="flex items-center gap-1.5 bg-rose-500/10 border border-rose-500/20 px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-rose-500/15 transition-all animate-pulse" 
+              className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 px-3.5 py-2 sm:px-3.5 sm:py-1.5 rounded-full text-xs cursor-pointer hover:bg-rose-500/15 transition-all animate-pulse min-h-[44px] sm:min-h-0 touch-manipulation" 
               title={`${apiKeyStatus.message}. Click for diagnostic details.`} 
               onClick={() => setDiagnosticModal({
                 isOpen: true,
@@ -1544,7 +1445,7 @@ export default function App() {
             </div>
           ) : apiKeyStatus.status === 'error' ? (
             <div 
-              className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs cursor-pointer hover:bg-amber-500/15 transition-all" 
+              className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-3.5 py-2 sm:px-3.5 sm:py-1.5 rounded-full text-xs cursor-pointer hover:bg-amber-500/15 transition-all min-h-[44px] sm:min-h-0 touch-manipulation" 
               title={`${apiKeyStatus.message}. Click for diagnostic details.`} 
               onClick={() => setDiagnosticModal({
                 isOpen: true,
@@ -1559,7 +1460,7 @@ export default function App() {
               <span className="text-amber-400 font-bold flex items-center gap-1 sm:hidden">Error ⚠️</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs" title={`${apiKeyStatus.message}. Running in high-performance local simulation mode.`}>
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-2 sm:px-3.5 sm:py-1.5 rounded-full text-xs min-h-[44px] sm:min-h-0" title={`${apiKeyStatus.message}. Running in high-performance local simulation mode.`}>
               <span className="w-2 h-2 rounded-full bg-slate-400" />
               <span className="text-slate-400 font-bold hidden sm:inline">Local Cognitive Engine</span>
               <span className="text-slate-400 font-bold sm:hidden">Local</span>
@@ -1583,7 +1484,7 @@ export default function App() {
                      console.error("Sign out failed", e);
                   }
                 }}
-                className="flex items-center gap-1.5 bg-slate-850 hover:bg-slate-800 border border-slate-750 text-slate-300 hover:text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                className="flex items-center gap-1.5 bg-slate-850 hover:bg-slate-800 border border-slate-750 text-slate-300 hover:text-white px-3.5 py-2 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer min-h-[44px] sm:min-h-0 touch-manipulation"
                 title="Sign Out"
               >
                 <LogOut className="w-3.5 h-3.5 text-slate-400" />
@@ -1598,7 +1499,7 @@ export default function App() {
                   setGuestMode(false);
                   localStorage.removeItem('tp_guest_mode');
                 }}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer shadow-md hover:shadow-emerald-500/10"
+                className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 px-4 py-2.5 sm:px-3.5 sm:py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer shadow-md hover:shadow-emerald-500/10 min-h-[44px] sm:min-h-0 touch-manipulation"
                 title="Sign in with your email to sync data across all devices"
               >
                 🔑 <span className="hidden sm:inline">Sign In / Sync</span>
@@ -1609,35 +1510,52 @@ export default function App() {
         </div>
       </header>
 
-      {/* MASTER VIEW SWITCHER (Mobile-friendly toggle for switching between Task List and Chat/Plan views) */}
-      <div className="bg-slate-950/20 border-b border-slate-850/60 p-2.5 flex items-center justify-center gap-2 flex-shrink-0 z-30">
-        <div className="flex bg-slate-950/80 border border-slate-850 p-1 rounded-xl shadow-inner max-w-md w-full relative">
+      {/* MASTER TABS SWITCHER - BEAUTIFUL, MODERN AND FLUID FOR ALL DEVICES */}
+      <div className="bg-slate-950/30 border-b border-slate-850/50 px-4 py-3 flex items-center justify-center flex-shrink-0 z-30">
+        <div className="flex flex-wrap md:flex-nowrap bg-slate-950/85 border border-slate-800/80 p-1 rounded-2xl shadow-lg max-w-4xl w-full justify-between items-center gap-1">
           <button
             type="button"
             onClick={() => setActiveTab('tasks')}
-            className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[44px] ${
               activeTab === 'tasks'
-                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md shadow-emerald-500/15'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md shadow-emerald-500/20 scale-102'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
             }`}
           >
-            📋 Tasks Checklist
+            📋 Checklist Tasks
           </button>
           <button
             type="button"
-            onClick={() => {
-              // Switch to 'chat' tab as default when selecting AI Workspace
-              if (activeTab === 'tasks') {
-                setActiveTab('chat');
-              }
-            }}
-            className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeTab !== 'tasks'
-                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md shadow-emerald-500/15'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
+            onClick={() => setActiveTab('chat')}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[44px] ${
+              activeTab === 'chat'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md shadow-emerald-500/20 scale-102'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
             }`}
           >
-            ✨ AI Companion & Plan
+            💬 Companion Chat
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('schedule'); if (!scheduleData) handlePlanDay(); }}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[44px] ${
+              activeTab === 'schedule'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md shadow-emerald-500/20 scale-102'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+            }`}
+          >
+            📅 Schedule Planner
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('insights'); if (insights.length === 0) handleFullAnalysis(); }}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[44px] ${
+              activeTab === 'insights'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md shadow-emerald-500/20 scale-102'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+            }`}
+          >
+            💡 Workload Insights
           </button>
         </div>
       </div>
@@ -1646,20 +1564,11 @@ export default function App() {
       <div 
         id="layout-body" 
         className="flex flex-col flex-1 overflow-hidden relative z-10 bg-transparent"
-        style={{ userSelect: isDragging ? 'none' : 'auto' }}
       >
-        {activeTab === 'tasks' ? (
-          /* LEFT PANEL: Task Sidebar (now fluid and full-width in single column layout) */
-          <aside 
-            id="sidebar" 
-            className="bg-[#070A13]/95 flex flex-col overflow-hidden h-full flex-1 w-full"
-          >
-            {/* Top Resizable Section */}
-            <div 
-              className="flex flex-col flex-shrink-0 overflow-y-auto custom-scrollbar border-b border-slate-850/40"
-              style={{ height: `${topSidebarHeight}px`, minHeight: '120px', maxHeight: '75vh' }}
-            >
-              {/* Header & Task Creation Form */}
+        {activeTab === 'tasks' && (
+          <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-transparent w-full h-full">
+            {/* Left Column: Form & Search & Stats */}
+            <div className="w-full md:w-[360px] flex-shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-slate-850/60 bg-[#070A13]/95 overflow-y-auto custom-scrollbar">
               <TaskForm
                 taskTitle={taskTitle}
                 setTaskTitle={setTaskTitle}
@@ -1733,37 +1642,59 @@ export default function App() {
                   </button>
                 </div>
               </div>
-            </div>
 
-            {/* VERTICAL DIVIDER INSIDE SIDEBAR (↕ Arrows) with touch-none for perfect drag responsiveness */}
-            <div
-              className="h-1.5 hover:h-2 bg-slate-950/45 hover:bg-emerald-500/10 active:bg-emerald-500/25 border-y border-slate-850/50 cursor-row-resize select-none transition-all relative z-20 flex-shrink-0 flex items-center justify-center group/v touch-none"
-              onMouseDown={(e) => { e.preventDefault(); setIsDragging(true); setDragType('topSidebarHeight'); }}
-              onTouchStart={() => { setIsDragging(true); setDragType('topSidebarHeight'); }}
-            >
-              <div className="absolute flex items-center justify-center bg-slate-900 border border-slate-800 h-5 px-4 rounded-full shadow-md shadow-black/40 group-hover:border-emerald-500/30 transition-colors pointer-events-none">
-                <span className="text-emerald-400 font-black text-[10px] select-none flex items-center gap-1.5 leading-none">
-                  <span>↕</span>
-                  <span className="text-[8px] text-slate-300 font-extrabold uppercase tracking-widest pl-0.5">Adjust Split</span>
-                </span>
+              {/* Footer Stats summary info */}
+              <div id="stats-summary" className="p-4 border-t border-slate-850 bg-slate-950/20 flex-shrink-0 grid grid-cols-3 gap-2 text-center border-b border-slate-850/40">
+                <div className="flex flex-col">
+                  <span className="text-sm font-extrabold text-rose-400 font-mono">{overdueCount}</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">🚨 Overdue</span>
+                </div>
+                <div className="flex flex-col border-x border-slate-850/60">
+                  <span className="text-sm font-extrabold text-emerald-400 font-mono">{pendingCount}</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">⏳ Pending</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-extrabold text-slate-400 font-mono">{completedCount}</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">✅ Done</span>
+                </div>
+              </div>
+
+              {/* Quick onboarding demo/reset actions */}
+              <div className="p-2.5 bg-slate-950/40 border-t border-slate-850/60 flex items-center justify-between gap-2 mt-auto">
+                <button
+                  type="button"
+                  onClick={handleLoadDemoTasks}
+                  className="flex-1 bg-slate-900/60 hover:bg-slate-850 text-emerald-400 hover:text-emerald-300 border border-slate-850/60 text-[10px] font-black uppercase tracking-wider py-2 rounded-xl transition-all cursor-pointer active:scale-98 flex items-center justify-center gap-1.5 min-h-[40px]"
+                  title="Load onboarding sample tasks to help you explore"
+                >
+                  📥 Load Demo
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearAllTasks}
+                  className="flex-1 bg-slate-900/60 hover:bg-rose-950/20 text-rose-400 hover:text-rose-300 border border-slate-850/60 text-[10px] font-black uppercase tracking-wider py-2 rounded-xl transition-all cursor-pointer active:scale-98 flex items-center justify-center gap-1 min-h-[40px]"
+                  title="Clear all tasks in the workspace to start perfectly fresh"
+                >
+                  🗑️ Clear All
+                </button>
               </div>
             </div>
 
-            {/* Scrollable Task List */}
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar">
+            {/* Right Column: Scrollable Task List */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-3 custom-scrollbar">
               {currentTasks.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
                   <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-xl mb-4 shadow-sm animate-bounce duration-1000">
                     🎯
                   </div>
-                  <p className="text-xs font-bold text-slate-200">No tasks planned yet</p>
-                  <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed font-medium max-w-[210px] mx-auto">
-                    Add tasks above to organize your goals, or load our pre-made onboarding workspace.
+                  <p className="text-sm font-bold text-slate-200">No tasks planned yet</p>
+                  <p className="text-xs text-slate-400 mt-1.5 leading-relaxed font-medium max-w-[210px] mx-auto">
+                    Add tasks on the left to organize your goals, or load our pre-made onboarding workspace.
                   </p>
                   <button
                     type="button"
                     onClick={handleLoadDemoTasks}
-                    className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-[10px] font-extrabold uppercase tracking-widest py-2.5 px-4 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                    className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-xs font-extrabold uppercase tracking-widest py-2.5 px-6 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
                   >
                     📥 Load Demo Tasks
                   </button>
@@ -1772,7 +1703,7 @@ export default function App() {
                   t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                   (t.description || '').toLowerCase().includes(searchQuery.toLowerCase())
                 ).length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
                   <span className="text-2xl mb-2">🔍</span>
                   <p className="text-xs font-bold text-slate-400">No matching task plans</p>
                 </div>
@@ -1823,45 +1754,10 @@ export default function App() {
                   ))
               )}
             </div>
+          </div>
+        )}
 
-            {/* Quick onboarding demo/reset actions */}
-            <div className="p-2.5 bg-slate-950/40 border-t border-slate-850/60 flex items-center justify-between gap-2 flex-shrink-0">
-              <button
-                type="button"
-                onClick={handleLoadDemoTasks}
-                className="flex-1 bg-slate-900/60 hover:bg-slate-850 text-emerald-400 hover:text-emerald-300 border border-slate-850/60 text-[10px] font-black uppercase tracking-wider py-2 rounded-xl transition-all cursor-pointer active:scale-98 flex items-center justify-center gap-1.5"
-                title="Load onboarding sample tasks to help you explore"
-              >
-                📥 Load Demo
-              </button>
-              <button
-                type="button"
-                onClick={handleClearAllTasks}
-                className="flex-1 bg-slate-900/60 hover:bg-rose-950/20 text-rose-400 hover:text-rose-300 border border-slate-850/60 text-[10px] font-black uppercase tracking-wider py-2 rounded-xl transition-all cursor-pointer active:scale-98 flex items-center justify-center gap-1"
-                title="Clear all tasks in the workspace to start perfectly fresh"
-              >
-                🗑️ Clear All
-              </button>
-            </div>
-
-            {/* Footer Stats summary info */}
-            <div id="stats-summary" className="p-4 border-t border-slate-850 bg-slate-950/20 flex-shrink-0 grid grid-cols-3 gap-2 text-center">
-              <div className="flex flex-col">
-                <span className="text-sm font-extrabold text-rose-400 font-mono">{overdueCount}</span>
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">🚨 Overdue</span>
-              </div>
-              <div className="flex flex-col border-x border-slate-850/60">
-                <span className="text-sm font-extrabold text-emerald-400 font-mono">{pendingCount}</span>
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">⏳ Pending</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-extrabold text-slate-400 font-mono">{completedCount}</span>
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">✅ Done</span>
-              </div>
-            </div>
-          </aside>
-        ) : (
-          /* RIGHT PANEL: Main Tab Area (renders Chat, Planner, and Insights with clean unified selection tabs) */
+        {activeTab !== 'tasks' && (
           <main 
             id="main-content" 
             className="flex flex-col overflow-hidden bg-transparent flex-1 w-full h-full min-w-0"
@@ -1875,13 +1771,13 @@ export default function App() {
                 <p className="text-xs text-slate-400 mt-0.5 font-medium">
                   {selectedTaskId
                     ? `Active Focus Context: "${currentTasks.find(t => t.id === selectedTaskId)?.title}"`
-                    : 'Select any task checklist in the tasks view to load analytical checking'}
+                    : 'Select any task checklist in the Checklist Tasks tab to load analytical checking'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleFullAnalysis}
-                  className="bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-bold py-2 px-3.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-98"
+                  className="bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-bold py-2 px-3.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-98 min-h-[40px] sm:min-h-0"
                   title="Get full workload analysis"
                 >
                   <Activity className="w-3.5 h-3.5 text-emerald-400" />
@@ -1893,40 +1789,6 @@ export default function App() {
             {/* Top Progress Loading Shimmer */}
             <div className={`h-0.5 w-full bg-slate-850 relative overflow-hidden flex-shrink-0 ${agentStatus === 'thinking' ? 'block' : 'hidden'}`}>
               <div className="absolute top-0 bottom-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-shimmer" />
-            </div>
-
-            {/* Navigation Tabs (Fully responsive selection bar) */}
-            <div className="flex overflow-x-auto custom-scrollbar border-b border-slate-850/60 bg-slate-900/5 gap-1 py-1 px-4 sm:px-6 flex-shrink-0">
-              <button
-                onClick={() => setActiveTab('chat')}
-                className={`py-2.5 px-3.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'chat'
-                    ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/25'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
-                }`}
-              >
-                💬 Companion Chat
-              </button>
-              <button
-                onClick={() => { setActiveTab('schedule'); if (!scheduleData) handlePlanDay(); }}
-                className={`py-2.5 px-3.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'schedule'
-                    ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/25'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
-                }`}
-              >
-                📅 Schedule Planner
-              </button>
-              <button
-                onClick={() => { setActiveTab('insights'); if (insights.length === 0) handleFullAnalysis(); }}
-                className={`py-2.5 px-3.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'insights'
-                    ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/25'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
-                }`}
-              >
-                💡 Workload Insights
-              </button>
             </div>
 
             {/* VIEWPORT AREA */}

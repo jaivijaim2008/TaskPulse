@@ -130,7 +130,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
         style={{ backgroundColor: task.completed ? '#4B5563' : urg.color }}
       />
 
-      {/* Quick Edit icon trigger revealed on card hover */}
+      {/* Quick Edit icon trigger: visible on mobile, hover-revealed on desktop */}
       {!task.completed && !isEditing && (
         <button
           type="button"
@@ -138,10 +138,10 @@ export const TaskCard = React.memo<TaskCardProps>(({
             e.stopPropagation();
             handleStartQuickEdit(e, task);
           }}
-          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-800/80 hover:bg-emerald-400 hover:text-slate-950 text-slate-300 p-1.5 rounded-lg border border-slate-700 hover:border-emerald-500 shadow-md cursor-pointer z-10"
+          className="absolute top-2.5 right-2.5 opacity-100 md:opacity-0 group-hover:opacity-100 transition-all duration-150 bg-slate-800/80 hover:bg-emerald-400 hover:text-slate-950 text-slate-300 rounded-xl border border-slate-700 hover:border-emerald-500 shadow-md cursor-pointer z-10 w-11 h-11 sm:w-8 sm:h-8 flex items-center justify-center touch-manipulation"
           title="Quick Edit Task"
         >
-          <Pencil className="w-3.5 h-3.5" />
+          <Pencil className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
         </button>
       )}
 
@@ -179,7 +179,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
                   key={pri}
                   type="button"
                   onClick={() => setQuickEditPriority(pri)}
-                  className={`py-1 text-[10px] font-bold uppercase tracking-wider rounded border transition-all cursor-pointer ${
+                  className={`py-3 sm:py-1 text-[10px] font-bold uppercase tracking-wider rounded border transition-all cursor-pointer flex items-center justify-center min-h-[40px] sm:min-h-0 touch-manipulation ${
                     quickEditPriority === pri
                       ? pri === 'high'
                         ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 font-extrabold'
@@ -199,15 +199,15 @@ export const TaskCard = React.memo<TaskCardProps>(({
             <button
               type="button"
               onClick={handleCancelQuickEdit}
-              className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-850 transition-colors cursor-pointer"
+              className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200 px-4 py-3 sm:px-2.5 sm:py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-850 transition-all cursor-pointer min-h-[44px] sm:min-h-0 flex items-center justify-center touch-manipulation"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="text-[10px] font-bold uppercase tracking-wider bg-emerald-400 hover:bg-emerald-300 text-slate-950 px-3.5 py-1.5 rounded-lg flex items-center gap-1 shadow-md shadow-emerald-950/20 cursor-pointer transition-colors"
+              className="text-[10px] font-bold uppercase tracking-wider bg-emerald-400 hover:bg-emerald-300 text-slate-950 px-5 py-3 sm:px-3.5 sm:py-1.5 rounded-lg flex items-center gap-1.5 shadow-md shadow-emerald-950/20 cursor-pointer transition-all min-h-[44px] sm:min-h-0 justify-center touch-manipulation"
             >
-              <Save className="w-3 h-3" /> Save
+              <Save className="w-3.5 h-3.5 sm:w-3 sm:h-3" /> Save
             </button>
           </div>
         </form>
@@ -294,12 +294,12 @@ export const TaskCard = React.memo<TaskCardProps>(({
                       e.stopPropagation();
                       handleToggleSubtask(task.id, s.id, e);
                     }}
-                    className="flex items-center gap-2 text-[11px] text-slate-300 hover:text-emerald-400 transition-colors py-0.5 cursor-pointer"
+                    className="flex items-center gap-2.5 text-[11px] text-slate-300 hover:text-emerald-400 transition-colors py-2 sm:py-0.5 cursor-pointer touch-manipulation"
                   >
                     {s.completed ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                      <CheckCircle2 className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-emerald-400 flex-shrink-0" />
                     ) : (
-                      <Circle className="w-3.5 h-3.5 text-slate-500 hover:text-emerald-400 flex-shrink-0" />
+                      <Circle className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-slate-500 hover:text-emerald-400 flex-shrink-0" />
                     )}
                     <span className={`truncate ${s.completed ? 'line-through text-slate-500 font-medium' : 'font-medium'}`}>
                       {s.title} <span className="text-slate-500 font-mono text-[9px]">({s.duration || 15}m)</span>
@@ -351,9 +351,9 @@ export const TaskCard = React.memo<TaskCardProps>(({
                 e.stopPropagation();
                 handleToggleTask(task.id, e);
               }}
-              className="text-xs text-slate-300 hover:text-emerald-400 transition-colors flex items-center gap-1 bg-slate-950/40 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 px-2.5 py-1 rounded-lg cursor-pointer font-semibold"
+              className="text-xs text-slate-300 hover:text-emerald-400 transition-all flex items-center gap-1.5 bg-slate-950/40 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 px-4 py-3 sm:px-2.5 sm:py-1 rounded-lg cursor-pointer font-bold min-h-[44px] sm:min-h-0 touch-manipulation"
             >
-              {task.completed ? <RotateCcw className="w-3 h-3" /> : <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />}
+              {task.completed ? <RotateCcw className="w-3.5 h-3.5 sm:w-3 sm:h-3" /> : <Check className="w-3.5 h-3.5 sm:w-3 sm:h-3 text-emerald-400 stroke-[3]" />}
               {task.completed ? 'Re-open' : 'Done'}
             </button>
 
@@ -364,10 +364,10 @@ export const TaskCard = React.memo<TaskCardProps>(({
                     e.stopPropagation();
                     handleBreakdownTask(task, e);
                   }}
-                  className="text-[11px] text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/20 hover:border-emerald-500/30 px-2 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-all duration-150 font-bold"
+                  className="text-[11px] text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/20 hover:border-emerald-500/30 px-3.5 py-3 sm:px-2.5 sm:py-1 rounded-lg flex items-center gap-1.5 cursor-pointer transition-all duration-150 font-bold min-h-[44px] sm:min-h-0 touch-manipulation"
                   title="Use TaskPulse's local cognitive engine to break this task down into bite-sized actionable checklists"
                 >
-                  <Bot className="w-3 h-3" /> Breakdown
+                  <Bot className="w-3.5 h-3.5 sm:w-3 sm:h-3" /> Breakdown
                 </button>
               )}
               <button
@@ -375,7 +375,7 @@ export const TaskCard = React.memo<TaskCardProps>(({
                   e.stopPropagation();
                   handleDeleteTask(task.id, e);
                 }}
-                className="text-slate-400 hover:text-rose-400 transition-colors p-1.5 hover:bg-rose-500/10 rounded-lg cursor-pointer"
+                className="text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl cursor-pointer w-11 h-11 sm:w-8 sm:h-8 flex items-center justify-center transition-colors touch-manipulation"
                 title="Delete task"
               >
                 <Trash2 className="w-4 h-4" />

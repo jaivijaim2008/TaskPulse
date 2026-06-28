@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { 
   signInWithPopup,
   GoogleAuthProvider,
-  auth 
+  auth,
+  setCachedAccessToken
 } from '../lib/firebase';
 import { 
   Sparkles, 
@@ -29,7 +30,14 @@ export function AuthScreen({ onSuccess, onContinueAsGuest }: AuthScreenProps) {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      provider.addScope('https://www.googleapis.com/auth/calendar');
+      provider.addScope('https://www.googleapis.com/auth/calendar.events');
+      
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setCachedAccessToken(credential.accessToken);
+      }
       setSuccess('Logged in with Google successfully!');
       setTimeout(() => {
         onSuccess();
