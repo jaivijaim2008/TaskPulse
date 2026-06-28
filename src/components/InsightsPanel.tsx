@@ -136,18 +136,18 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
           </div>
 
           {/* Quick Metrics */}
-          <div className="flex items-center gap-4 text-xs font-mono">
-            <div className="flex items-center gap-1.5 bg-slate-950/50 border border-slate-850/50 px-3 py-1.5 rounded-xl">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-[11px] sm:text-xs font-mono w-full sm:w-auto">
+            <div className="flex items-center gap-1.5 bg-slate-950/50 border border-slate-850/50 px-2.5 py-1.5 sm:px-3 rounded-xl flex-1 sm:flex-initial justify-center sm:justify-start">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
               <span className="text-slate-400">Completed:</span>
               <span className="font-extrabold text-slate-100">{totalCompleted7Days}</span>
             </div>
-            <div className="flex items-center gap-1.5 bg-slate-950/50 border border-slate-850/50 px-3 py-1.5 rounded-xl">
+            <div className="flex items-center gap-1.5 bg-slate-950/50 border border-slate-850/50 px-2.5 py-1.5 sm:px-3 rounded-xl flex-1 sm:flex-initial justify-center sm:justify-start">
               <span className="w-2 h-2 rounded-full bg-rose-500" />
               <span className="text-slate-400">Overdue:</span>
               <span className="font-extrabold text-slate-100">{totalOverdue7Days}</span>
             </div>
-            <div className="flex items-center gap-1.5 bg-slate-950/50 border border-slate-850/50 px-3 py-1.5 rounded-xl">
+            <div className="flex items-center gap-1.5 bg-slate-950/50 border border-slate-850/50 px-2.5 py-1.5 sm:px-3 rounded-xl flex-1 sm:flex-initial justify-center sm:justify-start">
               <span className="text-slate-400">Efficiency:</span>
               <span className={`font-extrabold ${efficiencyRate >= 70 ? 'text-emerald-400' : 'text-amber-400'}`}>{efficiencyRate}%</span>
             </div>

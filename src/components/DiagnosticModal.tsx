@@ -47,7 +47,7 @@ export const DiagnosticModal: React.FC<DiagnosticModalProps> = ({
       />
 
       {/* Modal Box */}
-      <div className="relative w-full max-w-lg bg-[#0d1222] border border-slate-800/80 rounded-2xl p-6 shadow-2xl flex flex-col gap-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-lg bg-[#0d1222] border border-slate-800/80 rounded-2xl p-5 sm:p-6 shadow-2xl flex flex-col gap-4 max-h-[calc(100vh-2rem)] overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-200">
         {/* Subtle Ambient Glow */}
         <div className={`absolute -top-12 -right-12 w-28 h-28 rounded-full ${status === 'working' ? 'bg-emerald-500/10' : status === 'quota_exceeded' ? 'bg-amber-500/10' : status === 'error' ? 'bg-rose-500/10' : 'bg-indigo-500/10'} blur-2xl pointer-events-none`} />
         

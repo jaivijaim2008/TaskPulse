@@ -101,6 +101,10 @@ const MODEL_FALLBACK_LIST = [
   'gemini-flash-latest'
 ];
 
+// Simple cool-down mechanism for exhausted models to prevent slow timeout delays
+const exhaustedModels = new Map<string, number>();
+const COOL_DOWN_PERIOD = 3 * 60 * 1000; // 3 minutes cool-down
+
 async function generateContentWithFallback(
   ai: GoogleGenAI,
   options: {
@@ -112,13 +116,23 @@ async function generateContentWithFallback(
   let firstError: any = null;
   let quotaError: any = null;
   let lastError: any = null;
-  const modelsToTry = new Set<string>();
+  
+  const allModels = new Set<string>();
   if (options.defaultModel) {
-    modelsToTry.add(options.defaultModel);
+    allModels.add(options.defaultModel);
   }
-  MODEL_FALLBACK_LIST.forEach(m => modelsToTry.add(m));
+  MODEL_FALLBACK_LIST.forEach(m => allModels.add(m));
 
-  for (const model of modelsToTry) {
+  // Skip models currently marked as exhausted to prevent sluggish fallback latencies
+  const now = Date.now();
+  const modelsToTry = Array.from(allModels).filter(model => {
+    const expiry = exhaustedModels.get(model);
+    return !expiry || now > expiry;
+  });
+
+  const finalModelsToTry = modelsToTry.length > 0 ? modelsToTry : Array.from(allModels);
+
+  for (const model of finalModelsToTry) {
     try {
       console.log(`[FallbackEngine] Attempting generateContent with model: ${model}`);
       const response = await ai.models.generateContent({
@@ -135,6 +149,8 @@ async function generateContentWithFallback(
       }
       if (checkIsQuotaError(err)) {
         quotaError = err;
+        exhaustedModels.set(model, Date.now() + COOL_DOWN_PERIOD);
+        console.warn(`[FallbackEngine] Model ${model} is exhausted. Cool-down active for 3 minutes.`);
       }
       const errStr = err.message || err.toString() || '';
       console.warn(`[FallbackEngine] Model ${model} failed:`, errStr);
@@ -154,13 +170,23 @@ async function generateContentStreamWithFallback(
   let firstError: any = null;
   let quotaError: any = null;
   let lastError: any = null;
-  const modelsToTry = new Set<string>();
+  
+  const allModels = new Set<string>();
   if (options.defaultModel) {
-    modelsToTry.add(options.defaultModel);
+    allModels.add(options.defaultModel);
   }
-  MODEL_FALLBACK_LIST.forEach(m => modelsToTry.add(m));
+  MODEL_FALLBACK_LIST.forEach(m => allModels.add(m));
 
-  for (const model of modelsToTry) {
+  // Skip models currently marked as exhausted to prevent sluggish fallback latencies
+  const now = Date.now();
+  const modelsToTry = Array.from(allModels).filter(model => {
+    const expiry = exhaustedModels.get(model);
+    return !expiry || now > expiry;
+  });
+
+  const finalModelsToTry = modelsToTry.length > 0 ? modelsToTry : Array.from(allModels);
+
+  for (const model of finalModelsToTry) {
     try {
       console.log(`[FallbackEngine] Attempting generateContentStream with model: ${model}`);
       const responseStream = await ai.models.generateContentStream({
@@ -177,6 +203,8 @@ async function generateContentStreamWithFallback(
       }
       if (checkIsQuotaError(err)) {
         quotaError = err;
+        exhaustedModels.set(model, Date.now() + COOL_DOWN_PERIOD);
+        console.warn(`[FallbackEngine] Stream model ${model} is exhausted. Cool-down active for 3 minutes.`);
       }
       const errStr = err.message || err.toString() || '';
       console.warn(`[FallbackEngine] Stream model ${model} failed:`, errStr);

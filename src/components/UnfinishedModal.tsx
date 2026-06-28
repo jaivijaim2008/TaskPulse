@@ -29,7 +29,7 @@ export const UnfinishedModal: React.FC<UnfinishedModalProps> = ({
       />
 
       {/* Main alert dialogue box */}
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col gap-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-2xl flex flex-col gap-4 max-h-[calc(100vh-2rem)] overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-200">
         {/* Subtle decorative glow */}
         <div className="absolute -top-12 -right-12 w-24 h-24 rounded-full bg-rose-500/10 blur-xl pointer-events-none" />
         <div className="absolute -bottom-12 -left-12 w-24 h-24 rounded-full bg-amber-500/5 blur-xl pointer-events-none" />
