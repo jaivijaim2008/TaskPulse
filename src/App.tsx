@@ -557,6 +557,77 @@ export default function App() {
     setFocusedTask(newTask);
   }, [taskTitle, taskDesc, taskDeadline, taskCategory, taskPriority, taskDuration, taskRecurring, tasks]);
 
+  const handleClearAllTasks = React.useCallback(() => {
+    setTasks([]);
+    localStorage.setItem('tp_tasks', JSON.stringify([]));
+    setSelectedTaskId(null);
+    setFocusedTask(null);
+  }, []);
+
+  const handleLoadDemoTasks = React.useCallback(() => {
+    const now = new Date();
+    const yesterdayStr = getYesterdayDateString();
+    const d1 = new Date(now); d1.setHours(d1.getHours() + 6);
+    const d2 = new Date(now); d2.setHours(d2.getHours() + 12);
+    const d3 = new Date(now); d3.setDate(d3.getDate() + 3);
+
+    const demoTasks: Task[] = [
+      {
+        id: 'demo-1',
+        title: 'Launch SaaS Product MVP 🚀',
+        description: 'Publish product on ProductHunt, send announcement email, and track real-time traffic analytics.',
+        deadline: d1.toISOString(),
+        category: 'work',
+        priority: 'high',
+        completed: false,
+        estimatedDuration: 60,
+        subtasks: [
+          { id: 'sub-demo-1-1', title: 'Prepare high-quality screenshots & banners', completed: true, duration: 15 },
+          { id: 'sub-demo-1-2', title: 'Draft launch announcement copy', completed: false, duration: 15 },
+          { id: 'sub-demo-1-3', title: 'Publish ProductHunt post & share on social channels', completed: false, duration: 30 }
+        ],
+        createdAt: now.toISOString(),
+        position: 0,
+        recurring: 'none'
+      },
+      {
+        id: 'demo-2',
+        title: 'Daily Coding Habit 💻',
+        description: 'Solve one coding challenge and commit to main repository.',
+        deadline: d2.toISOString(),
+        category: 'study',
+        priority: 'medium',
+        completed: false,
+        estimatedDuration: 30,
+        subtasks: [],
+        createdAt: now.toISOString(),
+        position: 1,
+        recurring: 'daily',
+        streak: 4,
+        lastCompletedDate: yesterdayStr
+      },
+      {
+        id: 'demo-3',
+        title: 'Organize Workspace 🧹',
+        description: 'Cable management, dust the desk, and arrange desk lights for better ergonomics.',
+        deadline: d3.toISOString(),
+        category: 'personal',
+        priority: 'low',
+        completed: false,
+        estimatedDuration: 45,
+        subtasks: [],
+        createdAt: now.toISOString(),
+        position: 2,
+        recurring: 'none'
+      }
+    ];
+
+    setTasks(demoTasks);
+    localStorage.setItem('tp_tasks', JSON.stringify(demoTasks));
+    setSelectedTaskId('demo-1');
+    setFocusedTask(demoTasks[0]);
+  }, []);
+
   const handleDeleteTask = React.useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const currentTasks = Array.isArray(tasks) ? tasks : [];
@@ -1354,10 +1425,21 @@ export default function App() {
           {/* Scrollable Task List */}
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar">
             {currentTasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                <span className="text-3xl mb-3 filter drop-shadow-sm">🎯</span>
+              <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-xl mb-4 shadow-sm animate-bounce duration-1000">
+                  🎯
+                </div>
                 <p className="text-xs font-bold text-slate-200">No tasks planned yet</p>
-                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed font-medium">Add tasks above to organize your goals and let AI optimize your agenda.</p>
+                <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed font-medium max-w-[210px] mx-auto">
+                  Add tasks above to organize your goals, or load our pre-made onboarding workspace.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleLoadDemoTasks}
+                  className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-[10px] font-extrabold uppercase tracking-widest py-2.5 px-4 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  📥 Load Demo Tasks
+                </button>
               </div>
             ) : currentTasks.filter(t => 
                 t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1413,6 +1495,26 @@ export default function App() {
                   />
                 ))
             )}
+          </div>
+
+          {/* Quick onboarding demo/reset actions */}
+          <div className="p-2.5 bg-slate-950/40 border-t border-slate-850/60 flex items-center justify-between gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={handleLoadDemoTasks}
+              className="flex-1 bg-slate-900/60 hover:bg-slate-850 text-emerald-400 hover:text-emerald-300 border border-slate-850/60 text-[10px] font-black uppercase tracking-wider py-2 rounded-xl transition-all cursor-pointer active:scale-98 flex items-center justify-center gap-1.5"
+              title="Load onboarding sample tasks to help you explore"
+            >
+              📥 Load Demo
+            </button>
+            <button
+              type="button"
+              onClick={handleClearAllTasks}
+              className="flex-1 bg-slate-900/60 hover:bg-rose-950/20 text-rose-400 hover:text-rose-300 border border-slate-850/60 text-[10px] font-black uppercase tracking-wider py-2 rounded-xl transition-all cursor-pointer active:scale-98 flex items-center justify-center gap-1"
+              title="Clear all tasks in the workspace to start perfectly fresh"
+            >
+              🗑️ Clear All
+            </button>
           </div>
 
           {/* Footer Stats summary info */}
