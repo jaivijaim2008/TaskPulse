@@ -754,6 +754,289 @@ const getTaskContextString = (tasks: any[]) => {
 
 // ============ API ROUTES ============
 
+import fs from 'fs';
+import nodemailer from 'nodemailer';
+
+// File-based virtual DB for local virtual users to bypass client-side Firestore rules and auth issues
+const DB_FILE = path.join(process.cwd(), 'local_virtual_db.json');
+
+const readVirtualDB = () => {
+  if (!fs.existsSync(DB_FILE)) {
+    return { users: {}, data: {}, pendingVerifications: {} };
+  }
+  try {
+    const raw = fs.readFileSync(DB_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!parsed.users) parsed.users = {};
+    if (!parsed.data) parsed.data = {};
+    if (!parsed.pendingVerifications) parsed.pendingVerifications = {};
+    return parsed;
+  } catch (err) {
+    console.error('Error reading virtual database:', err);
+    return { users: {}, data: {}, pendingVerifications: {} };
+  }
+};
+
+const writeVirtualDB = (data: any) => {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Error writing virtual database:', err);
+  }
+};
+
+// Helper to send SMTP mail with nodemailer
+const sendVerificationEmail = async (email: string, code: string) => {
+  const host = process.env.SMTP_HOST;
+  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const from = process.env.SMTP_FROM || '"TaskPulse AI" <noreply@taskpulse-ai.com>';
+
+  if (!host || !user || !pass) {
+    // SMTP not configured
+    return { sent: false, reason: 'SMTP credentials not configured in environment variables.' };
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465, // true for 465, false for other ports
+      auth: {
+        user,
+        pass,
+      },
+    });
+
+    const mailOptions = {
+      from,
+      to: email,
+      subject: `${code} is your TaskPulse AI Verification Code`,
+      html: `
+        <div style="font-family: 'Inter', -apple-system, sans-serif; max-width: 500px; margin: 0 auto; padding: 30px; background-color: #070913; color: #f1f5f9; border-radius: 20px; border: 1px solid #1e293b; text-align: center;">
+          <h2 style="color: #10b981; font-size: 24px; margin-bottom: 20px; font-weight: 800;">TaskPulse AI ⚡</h2>
+          <p style="font-size: 14px; line-height: 1.6; color: #cbd5e1;">Hello,</p>
+          <p style="font-size: 14px; line-height: 1.6; color: #cbd5e1;">Thank you for registering. Use the following security verification code to complete your registration process:</p>
+          <div style="margin: 30px 0;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 800; letter-spacing: 4px; color: #10b981; background-color: #0f172a; padding: 12px 24px; border-radius: 12px; border: 1px solid #334155; display: inline-block;">${code}</span>
+          </div>
+          <p style="font-size: 12px; color: #64748b; margin-top: 30px;">This code will expire in 15 minutes. If you did not request this code, please ignore this email.</p>
+          <hr style="border: 0; border-top: 1px solid #1e293b; margin: 20px 0;" />
+          <p style="font-size: 10px; color: #475569;">TaskPulse AI Companion App</p>
+        </div>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    return { sent: true };
+  } catch (error) {
+    console.error('Error in nodemailer transporter:', error);
+    return { sent: false, reason: String(error) };
+  }
+};
+
+// 0. VIRTUAL AUTHENTICATION & SYNC ENDPOINTS
+app.post('/api/auth/send-code', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required.' });
+    }
+    const emailKey = email.toLowerCase().trim();
+    
+    // Check if user already exists
+    const dbData = readVirtualDB();
+    if (dbData.users[emailKey]) {
+      return res.status(400).json({ code: 'auth/email-already-in-use', message: 'This email address is already registered.' });
+    }
+
+    // Generate 6 digit numeric code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 mins expiry
+
+    dbData.pendingVerifications = dbData.pendingVerifications || {};
+    dbData.pendingVerifications[emailKey] = { code, expiresAt };
+    writeVirtualDB(dbData);
+
+    // Try sending email
+    const emailResult = await sendVerificationEmail(emailKey, code);
+    
+    if (emailResult.sent) {
+      res.json({ success: true, isDemo: false, message: 'Verification code sent to email successfully!' });
+    } else {
+      // SMTP not configured, return code for demo sandbox testing
+      res.json({
+        success: true,
+        isDemo: true,
+        demoCode: code,
+        message: 'Sandbox mode: SMTP not configured. Use the verification code displayed below to test.'
+      });
+    }
+  } catch (err: any) {
+    console.error('Error sending verification code:', err);
+    res.status(500).json({ error: err.message || 'Server error sending verification code' });
+  }
+});
+
+app.post('/api/auth/verify-and-register', (req, res) => {
+  try {
+    const { email, code, password } = req.body;
+    if (!email || !code || !password) {
+      return res.status(400).json({ error: 'Email, verification code, and password are required.' });
+    }
+    const emailKey = email.toLowerCase().trim();
+    const dbData = readVirtualDB();
+
+    const verification = dbData.pendingVerifications?.[emailKey];
+    if (!verification) {
+      return res.status(400).json({ error: 'No verification code was requested for this email.' });
+    }
+
+    if (Date.now() > verification.expiresAt) {
+      return res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
+    }
+
+    if (verification.code !== code.trim()) {
+      return res.status(400).json({ error: 'Incorrect verification code. Please try again.' });
+    }
+
+    // Double check email already in use
+    if (dbData.users[emailKey]) {
+      return res.status(400).json({ code: 'auth/email-already-in-use', message: 'This email address is already registered.' });
+    }
+
+    // Register user!
+    const uid = 'v_' + Math.random().toString(36).substring(2, 11);
+    dbData.users[emailKey] = { uid, email: emailKey, password };
+    
+    // Seed initial empty user data
+    dbData.data[uid] = {
+      tasks: null,
+      chatHistory: null,
+      scheduleData: null,
+      insights: null
+    };
+
+    // Clean up verification
+    delete dbData.pendingVerifications[emailKey];
+    
+    writeVirtualDB(dbData);
+    res.json({ uid, email: emailKey, isVirtual: true });
+  } catch (err: any) {
+    console.error('Error in verify and register:', err);
+    res.status(500).json({ error: err.message || 'Server error verifying and registering' });
+  }
+});
+
+app.post('/api/auth/register', (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+    const emailKey = email.toLowerCase().trim();
+    const dbData = readVirtualDB();
+    if (dbData.users[emailKey]) {
+      return res.status(400).json({ code: 'auth/email-already-in-use', message: 'This email address is already registered.' });
+    }
+    const uid = 'v_' + Math.random().toString(36).substring(2, 11);
+    dbData.users[emailKey] = { uid, email: emailKey, password };
+    
+    // Seed initial empty user data
+    dbData.data[uid] = {
+      tasks: null,
+      chatHistory: null,
+      scheduleData: null,
+      insights: null
+    };
+    
+    writeVirtualDB(dbData);
+    res.json({ uid, email: emailKey, isVirtual: true });
+  } catch (err: any) {
+    console.error('Error in virtual registration endpoint:', err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+    const emailKey = email.toLowerCase().trim();
+    const dbData = readVirtualDB();
+    let user = dbData.users[emailKey];
+    
+    if (!user) {
+      return res.status(404).json({ 
+        code: 'auth/user-not-found', 
+        message: 'No account found with this email address. Please click the "Register" tab to create your account first!' 
+      });
+    }
+    
+    if (user.password !== password) {
+      return res.status(400).json({ 
+        code: 'auth/wrong-password', 
+        message: 'Incorrect password. Please verify your credentials and try again.' 
+      });
+    }
+    
+    res.json({ 
+      uid: user.uid, 
+      email: user.email, 
+      displayName: user.displayName || user.email.split('@')[0],
+      photoURL: user.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(user.email)}`,
+      isVirtual: true 
+    });
+  } catch (err: any) {
+    console.error('Error in virtual login endpoint:', err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.post('/api/sync/get', (req, res) => {
+  try {
+    const { uid } = req.body;
+    if (!uid) {
+      return res.status(400).json({ error: 'UID is required.' });
+    }
+    const dbData = readVirtualDB();
+    const userData = dbData.data[uid] || {
+      tasks: null,
+      chatHistory: null,
+      scheduleData: null,
+      insights: null
+    };
+    res.json(userData);
+  } catch (err: any) {
+    console.error('Error in sync get endpoint:', err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.post('/api/sync/save', (req, res) => {
+  try {
+    const { uid, tasks, chatHistory, scheduleData, insights } = req.body;
+    if (!uid) {
+      return res.status(400).json({ error: 'UID is required.' });
+    }
+    const dbData = readVirtualDB();
+    dbData.data[uid] = {
+      tasks: tasks !== undefined ? tasks : (dbData.data[uid]?.tasks || null),
+      chatHistory: chatHistory !== undefined ? chatHistory : (dbData.data[uid]?.chatHistory || null),
+      scheduleData: scheduleData !== undefined ? scheduleData : (dbData.data[uid]?.scheduleData || null),
+      insights: insights !== undefined ? insights : (dbData.data[uid]?.insights || null)
+    };
+    writeVirtualDB(dbData);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Error in sync save endpoint:', err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
 // 1. CHAT WITH AI ASSISTANT
 app.post('/api/chat', async (req, res) => {
   try {

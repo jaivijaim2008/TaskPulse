@@ -293,165 +293,320 @@ export default function App() {
   }, []);
 
   // ============ INITIALIZATION & FIREBASE AUTH ============
+  // 1. Initial Auth State Detector (Handles both Real and Virtual Auth)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      // Unsubscribe from any previous Firestore snapshot listener first
-      if (unbindRef.current) {
-        unbindRef.current();
-        unbindRef.current = null;
+    // Check for existing virtual user first
+    const storedVirtualUserStr = localStorage.getItem('tp_virtual_user');
+    if (storedVirtualUserStr) {
+      try {
+        const vUser = JSON.parse(storedVirtualUserStr);
+        if (vUser && vUser.uid && vUser.email) {
+          setCurrentUser(vUser);
+          setIsAuthLoading(false);
+          setGuestMode(false);
+          localStorage.removeItem('tp_guest_mode');
+          return;
+        }
+      } catch (err) {
+        console.error("Failed to parse stored virtual user:", err);
       }
+    }
 
-      setCurrentUser(user);
-      setIsAuthLoading(false);
-      
-      if (user) {
-        setGuestMode(false);
-        localStorage.removeItem('tp_guest_mode');
-        
-        // Bind to Firestore document
-        const userDocRef = doc(db, 'users', user.uid);
-        const unbind = onSnapshot(userDocRef, (snapshot) => {
-          if (snapshot.exists()) {
-            const data = snapshot.data();
-            
-            // Perform habit sweeping on the Firestore tasks if needed
-            const incomingTasks = data.tasks || [];
-            const currentDate = getLocalDateString();
-            const yesterdayStr = getYesterdayDateString();
-            let hasChanges = false;
-            
-            const sweptTasks = incomingTasks.map((t: Task) => {
-              if (t.recurring === 'daily') {
-                if (t.completed && t.lastCompletedDate !== currentDate) {
-                  hasChanges = true;
-                  let nextStreak = t.streak || 0;
-                  if (t.lastCompletedDate !== yesterdayStr) {
-                    nextStreak = 0;
-                  }
-                  return { ...t, completed: false, streak: nextStreak };
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      // Only set standard user if there is no virtual user in storage (to avoid overwrite/race conditions)
+      if (!localStorage.getItem('tp_virtual_user')) {
+        setCurrentUser(user);
+        setIsAuthLoading(false);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // 2. React to currentUser and bind to Firestore document (or local API sync for virtual users)
+  useEffect(() => {
+    // Unsubscribe from any previous Firestore snapshot listener first
+    if (unbindRef.current) {
+      unbindRef.current();
+      unbindRef.current = null;
+    }
+
+    if (!currentUser) {
+      // User is logged out.
+      isFirestoreReadyRef.current = false;
+      const isGuest = localStorage.getItem('tp_guest_mode') === 'true';
+      if (!isGuest) {
+        // Reset states
+        setTasks([]);
+        setChatMessages([]);
+        setScheduleData(null);
+        setInsights([]);
+        // Clean storage to prevent data leakage between sessions
+        localStorage.removeItem('tp_tasks');
+        localStorage.removeItem('tp_chat_history');
+        localStorage.removeItem('tp_schedule');
+        localStorage.removeItem('tp_insights');
+        lastSyncedRef.current = {
+          tasks: '',
+          chatHistory: '',
+          scheduleData: '',
+          insights: ''
+        };
+      }
+      return;
+    }
+
+    // We have a logged-in user (Real or Virtual)
+    setGuestMode(false);
+    localStorage.removeItem('tp_guest_mode');
+
+    const isVirtual = currentUser.isVirtual || currentUser.uid.startsWith('v_');
+
+    if (isVirtual) {
+      // Load and sync virtual user data via Express server-side database
+      fetch('/api/sync/get', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: currentUser.uid })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.tasks || data.chatHistory || data.scheduleData || data.insights) {
+          // Perform habit sweeping on the tasks if needed
+          const incomingTasks = data.tasks || [];
+          const currentDate = getLocalDateString();
+          const yesterdayStr = getYesterdayDateString();
+          let hasChanges = false;
+          
+          const sweptTasks = incomingTasks.map((t: Task) => {
+            if (t.recurring === 'daily') {
+              if (t.completed && t.lastCompletedDate !== currentDate) {
+                hasChanges = true;
+                let nextStreak = t.streak || 0;
+                if (t.lastCompletedDate !== yesterdayStr) {
+                  nextStreak = 0;
                 }
-                if (!t.completed && t.lastCompletedDate !== currentDate && t.lastCompletedDate !== yesterdayStr && (t.streak || 0) > 0) {
-                  hasChanges = true;
-                  return { ...t, streak: 0 };
-                }
+                return { ...t, completed: false, streak: nextStreak };
               }
-              return t;
-            });
-
-            const sweptTasksStr = JSON.stringify(sweptTasks);
-            if (sweptTasksStr !== lastSyncedRef.current.tasks) {
-              lastSyncedRef.current.tasks = sweptTasksStr;
-              setTasks(sweptTasks);
-              localStorage.setItem('tp_tasks', sweptTasksStr);
-            }
-
-            if (hasChanges) {
-              setDoc(userDocRef, { tasks: sweptTasks }, { merge: true })
-                .catch(err => console.error("Error saving swept tasks to Firestore:", err));
-            }
-
-            const incomingChat = data.chatHistory || [];
-            const incomingChatStr = JSON.stringify(incomingChat);
-            if (incomingChatStr !== lastSyncedRef.current.chatHistory) {
-              lastSyncedRef.current.chatHistory = incomingChatStr;
-              setChatMessages(incomingChat);
-              localStorage.setItem('tp_chat_history', incomingChatStr);
-            }
-
-            const incomingSchedule = data.scheduleData || null;
-            const incomingScheduleStr = JSON.stringify(incomingSchedule);
-            if (incomingScheduleStr !== lastSyncedRef.current.scheduleData) {
-              lastSyncedRef.current.scheduleData = incomingScheduleStr;
-              setScheduleData(incomingSchedule);
-              if (incomingSchedule) {
-                localStorage.setItem('tp_schedule', incomingScheduleStr);
-              } else {
-                localStorage.removeItem('tp_schedule');
+              if (!t.completed && t.lastCompletedDate !== currentDate && t.lastCompletedDate !== yesterdayStr && (t.streak || 0) > 0) {
+                hasChanges = true;
+                return { ...t, streak: 0 };
               }
             }
+            return t;
+          });
 
-            const incomingInsights = data.insights || [];
-            const incomingInsightsStr = JSON.stringify(incomingInsights);
-            if (incomingInsightsStr !== lastSyncedRef.current.insights) {
-              lastSyncedRef.current.insights = incomingInsightsStr;
-              setInsights(incomingInsights);
-              localStorage.setItem('tp_insights', incomingInsightsStr);
+          const sweptTasksStr = JSON.stringify(sweptTasks);
+          if (sweptTasksStr !== lastSyncedRef.current.tasks) {
+            lastSyncedRef.current.tasks = sweptTasksStr;
+            setTasks(sweptTasks);
+            localStorage.setItem('tp_tasks', sweptTasksStr);
+          }
+
+          if (hasChanges) {
+            fetch('/api/sync/save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ uid: currentUser.uid, tasks: sweptTasks })
+            }).catch(err => console.error("Error saving swept tasks to server:", err));
+          }
+
+          const incomingChat = data.chatHistory || [];
+          const incomingChatStr = JSON.stringify(incomingChat);
+          if (incomingChatStr !== lastSyncedRef.current.chatHistory) {
+            lastSyncedRef.current.chatHistory = incomingChatStr;
+            setChatMessages(incomingChat);
+            localStorage.setItem('tp_chat_history', incomingChatStr);
+          }
+
+          const incomingSchedule = data.scheduleData || null;
+          const incomingScheduleStr = JSON.stringify(incomingSchedule);
+          if (incomingScheduleStr !== lastSyncedRef.current.scheduleData) {
+            lastSyncedRef.current.scheduleData = incomingScheduleStr;
+            setScheduleData(incomingSchedule);
+            if (incomingSchedule) {
+              localStorage.setItem('tp_schedule', incomingScheduleStr);
+            } else {
+              localStorage.removeItem('tp_schedule');
             }
+          }
 
-            // Flag that we have fully loaded this user's data from Firestore
-            isFirestoreReadyRef.current = true;
-          } else {
-            // First time registered/logged-in user, seed with fresh default demo tasks only to keep account isolated and clean
-            const initialTasks = getDemoTasksList();
-            const initialChat = [
-              {
-                id: 'welcome',
-                sender: 'ai',
-                text: `### Welcome to **TaskPulse AI**! ⚡\n\nI'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use our custom on-device Cognitive Engine to help you plan your workload.\n\n**What I can do for you:**\n*   **Deconstruct complex tasks**: Click **"Breakdown"** on any task card to generate interactive subtasks.\n*   **Build optimized schedules**: Click **"Plan Day"** or the button below to generate an hour-by-hour planner.\n*   **Analyze workload bottlenecks**: Get real-time productivity insights by clicking **"Full Analysis"**.\n\nWhat would you like to accomplish first?`,
-                timestamp: new Date().toLocaleTimeString()
-              }
-            ];
+          const incomingInsights = data.insights || [];
+          const incomingInsightsStr = JSON.stringify(incomingInsights);
+          if (incomingInsightsStr !== lastSyncedRef.current.insights) {
+            lastSyncedRef.current.insights = incomingInsightsStr;
+            setInsights(incomingInsights);
+            localStorage.setItem('tp_insights', incomingInsightsStr);
+          }
 
-            const initialTasksStr = JSON.stringify(initialTasks);
-            const initialChatStr = JSON.stringify(initialChat);
+          // Flag that we have fully loaded this user's data
+          isFirestoreReadyRef.current = true;
+        } else {
+          // First time registered/logged-in user, seed with fresh default demo tasks only to keep account isolated and clean
+          const initialTasks = getDemoTasksList();
+          const initialChat = [
+            {
+              id: 'welcome',
+              sender: 'ai',
+              text: `### Welcome to **TaskPulse AI**! ⚡\n\nI'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use our custom on-device Cognitive Engine to help you plan your workload.\n\n**What I can do for you:**\n*   **Deconstruct complex tasks**: Click **"Breakdown"** on any task card to generate interactive subtasks.\n*   **Build optimized schedules**: Click **"Plan Day"** or the button below to generate an hour-by-hour planner.\n*   **Analyze workload bottlenecks**: Get real-time productivity insights by clicking **"Full Analysis"**.\n\nWhat would you like to accomplish first?`,
+              timestamp: new Date().toLocaleTimeString()
+            }
+          ];
 
-            lastSyncedRef.current.tasks = initialTasksStr;
-            lastSyncedRef.current.chatHistory = initialChatStr;
-            lastSyncedRef.current.scheduleData = 'null';
-            lastSyncedRef.current.insights = '[]';
+          const initialTasksStr = JSON.stringify(initialTasks);
+          const initialChatStr = JSON.stringify(initialChat);
 
-            // Mark ready and save to firestore
-            isFirestoreReadyRef.current = true;
-            setTasks(initialTasks);
-            setChatMessages(initialChat);
-            setScheduleData(null);
-            setInsights([]);
+          lastSyncedRef.current.tasks = initialTasksStr;
+          lastSyncedRef.current.chatHistory = initialChatStr;
+          lastSyncedRef.current.scheduleData = 'null';
+          lastSyncedRef.current.insights = '[]';
 
-            setDoc(userDocRef, {
+          // Mark ready and save
+          isFirestoreReadyRef.current = true;
+          setTasks(initialTasks);
+          setChatMessages(initialChat);
+          setScheduleData(null);
+          setInsights([]);
+
+          fetch('/api/sync/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: currentUser.uid,
               tasks: initialTasks,
               chatHistory: initialChat,
               scheduleData: null,
               insights: []
-            });
-          }
-        }, (err) => {
-          console.error("Firestore snapshot error:", err);
-        });
-        
-        unbindRef.current = unbind;
-      } else {
-        // User is logged out.
-        isFirestoreReadyRef.current = false;
-        const isGuest = localStorage.getItem('tp_guest_mode') === 'true';
-        if (!isGuest) {
-          // Reset states
-          setTasks([]);
-          setChatMessages([]);
-          setScheduleData(null);
-          setInsights([]);
-          // Clean storage to prevent data leakage between sessions
-          localStorage.removeItem('tp_tasks');
-          localStorage.removeItem('tp_chat_history');
-          localStorage.removeItem('tp_schedule');
-          localStorage.removeItem('tp_insights');
-          lastSyncedRef.current = {
-            tasks: '',
-            chatHistory: '',
-            scheduleData: '',
-            insights: ''
-          };
+            })
+          }).catch(err => console.error("Error seeding user data on server:", err));
         }
+      })
+      .catch(err => console.error("Error loading virtual user data:", err));
+
+      return;
+    }
+
+    // Bind to Firestore document (standard users)
+    const userDocRef = doc(db, 'users', currentUser.uid);
+    const unbind = onSnapshot(userDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        
+        // Perform habit sweeping on the Firestore tasks if needed
+        const incomingTasks = data.tasks || [];
+        const currentDate = getLocalDateString();
+        const yesterdayStr = getYesterdayDateString();
+        let hasChanges = false;
+        
+        const sweptTasks = incomingTasks.map((t: Task) => {
+          if (t.recurring === 'daily') {
+            if (t.completed && t.lastCompletedDate !== currentDate) {
+              hasChanges = true;
+              let nextStreak = t.streak || 0;
+              if (t.lastCompletedDate !== yesterdayStr) {
+                nextStreak = 0;
+              }
+              return { ...t, completed: false, streak: nextStreak };
+            }
+            if (!t.completed && t.lastCompletedDate !== currentDate && t.lastCompletedDate !== yesterdayStr && (t.streak || 0) > 0) {
+              hasChanges = true;
+              return { ...t, streak: 0 };
+            }
+          }
+          return t;
+        });
+
+        const sweptTasksStr = JSON.stringify(sweptTasks);
+        if (sweptTasksStr !== lastSyncedRef.current.tasks) {
+          lastSyncedRef.current.tasks = sweptTasksStr;
+          setTasks(sweptTasks);
+          localStorage.setItem('tp_tasks', sweptTasksStr);
+        }
+
+        if (hasChanges) {
+          setDoc(userDocRef, { tasks: sweptTasks }, { merge: true })
+            .catch(err => console.error("Error saving swept tasks to Firestore:", err));
+        }
+
+        const incomingChat = data.chatHistory || [];
+        const incomingChatStr = JSON.stringify(incomingChat);
+        if (incomingChatStr !== lastSyncedRef.current.chatHistory) {
+          lastSyncedRef.current.chatHistory = incomingChatStr;
+          setChatMessages(incomingChat);
+          localStorage.setItem('tp_chat_history', incomingChatStr);
+        }
+
+        const incomingSchedule = data.scheduleData || null;
+        const incomingScheduleStr = JSON.stringify(incomingSchedule);
+        if (incomingScheduleStr !== lastSyncedRef.current.scheduleData) {
+          lastSyncedRef.current.scheduleData = incomingScheduleStr;
+          setScheduleData(incomingSchedule);
+          if (incomingSchedule) {
+            localStorage.setItem('tp_schedule', incomingScheduleStr);
+          } else {
+            localStorage.removeItem('tp_schedule');
+          }
+        }
+
+        const incomingInsights = data.insights || [];
+        const incomingInsightsStr = JSON.stringify(incomingInsights);
+        if (incomingInsightsStr !== lastSyncedRef.current.insights) {
+          lastSyncedRef.current.insights = incomingInsightsStr;
+          setInsights(incomingInsights);
+          localStorage.setItem('tp_insights', incomingInsightsStr);
+        }
+
+        // Flag that we have fully loaded this user's data from Firestore
+        isFirestoreReadyRef.current = true;
+      } else {
+        // First time registered/logged-in user, seed with fresh default demo tasks only to keep account isolated and clean
+        const initialTasks = getDemoTasksList();
+        const initialChat = [
+          {
+            id: 'welcome',
+            sender: 'ai',
+            text: `### Welcome to **TaskPulse AI**! ⚡\n\nI'm your intelligent productivity agent. I keep track of your deadlines, automatically calculate urgencies, and use our custom on-device Cognitive Engine to help you plan your workload.\n\n**What I can do for you:**\n*   **Deconstruct complex tasks**: Click **"Breakdown"** on any task card to generate interactive subtasks.\n*   **Build optimized schedules**: Click **"Plan Day"** or the button below to generate an hour-by-hour planner.\n*   **Analyze workload bottlenecks**: Get real-time productivity insights by clicking **"Full Analysis"**.\n\nWhat would you like to accomplish first?`,
+            timestamp: new Date().toLocaleTimeString()
+          }
+        ];
+
+        const initialTasksStr = JSON.stringify(initialTasks);
+        const initialChatStr = JSON.stringify(initialChat);
+
+        lastSyncedRef.current.tasks = initialTasksStr;
+        lastSyncedRef.current.chatHistory = initialChatStr;
+        lastSyncedRef.current.scheduleData = 'null';
+        lastSyncedRef.current.insights = '[]';
+
+        // Mark ready and save to firestore
+        isFirestoreReadyRef.current = true;
+        setTasks(initialTasks);
+        setChatMessages(initialChat);
+        setScheduleData(null);
+        setInsights([]);
+
+        setDoc(userDocRef, {
+          tasks: initialTasks,
+          chatHistory: initialChat,
+          scheduleData: null,
+          insights: []
+        });
       }
+    }, (err) => {
+      console.error("Firestore snapshot error:", err);
     });
-    
+
+    unbindRef.current = unbind;
+
     return () => {
-      unsubscribe();
       if (unbindRef.current) {
         unbindRef.current();
         unbindRef.current = null;
       }
     };
-  }, [getDemoTasksList]);
+  }, [currentUser, getDemoTasksList]);
 
   // Bidirectional real-time state synchronization guard & effect
   useEffect(() => {
@@ -487,9 +642,19 @@ export default function App() {
     }
 
     if (needsSync) {
-      const userDocRef = doc(db, 'users', currentUser.uid);
-      setDoc(userDocRef, payload, { merge: true })
-        .catch(err => console.error("Error syncing state to Firestore:", err));
+      const isVirtual = currentUser.isVirtual || currentUser.uid.startsWith('v_');
+      if (isVirtual) {
+        // Save via local API
+        fetch('/api/sync/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: currentUser.uid, ...payload })
+        }).catch(err => console.error("Error syncing state via API:", err));
+      } else {
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        setDoc(userDocRef, payload, { merge: true })
+          .catch(err => console.error("Error syncing state to Firestore:", err));
+      }
     }
   }, [tasks, chatMessages, scheduleData, insights, currentUser]);
 
@@ -1359,7 +1524,10 @@ export default function App() {
   if (!currentUser && !guestMode) {
     return (
       <AuthScreen 
-        onSuccess={() => {
+        onSuccess={(user) => {
+          if (user) {
+            setCurrentUser(user);
+          }
           setGuestMode(false);
           localStorage.removeItem('tp_guest_mode');
         }}
@@ -1478,6 +1646,8 @@ export default function App() {
                 onClick={async () => {
                   try {
                      await signOut(auth);
+                     localStorage.removeItem('tp_virtual_user');
+                     setCurrentUser(null);
                      setGuestMode(false);
                      localStorage.removeItem('tp_guest_mode');
                   } catch (e) {

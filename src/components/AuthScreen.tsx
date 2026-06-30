@@ -1,58 +1,111 @@
 import React, { useState } from 'react';
 import { 
-  signInWithPopup,
-  GoogleAuthProvider,
-  auth,
-  setCachedAccessToken
+  loginVirtualUser,
+  registerVirtualUser
 } from '../lib/firebase';
 import { 
   Sparkles, 
   CheckCircle2, 
   AlertCircle,
-  Chrome,
   User,
-  ShieldCheck
+  ShieldCheck,
+  Loader2,
+  Calendar,
+  CloudLightning,
+  Mail,
+  Lock,
+  ArrowRight,
+  LogIn,
+  UserPlus
 } from 'lucide-react';
 
 interface AuthScreenProps {
-  onSuccess: () => void;
+  onSuccess: (user?: any) => void;
   onContinueAsGuest: () => void;
 }
 
 export function AuthScreen({ onSuccess, onContinueAsGuest }: AuthScreenProps) {
+  const [activeTab, setActiveTab] = useState<'signin' | 'register'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleGoogleSignIn = async () => {
+  // Secure Sign In Handler
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
     setSuccess(null);
+    if (!email || !password) {
+      setError('Please enter both your email and password.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const provider = new GoogleAuthProvider();
-      provider.addScope('https://www.googleapis.com/auth/calendar');
-      provider.addScope('https://www.googleapis.com/auth/calendar.events');
-      
-      const result = await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        setCachedAccessToken(credential.accessToken);
-      }
-      setSuccess('Logged in with Google successfully!');
+      const virtualUser = await loginVirtualUser(email, password);
+      setSuccess('Successfully authenticated! Loading your personal workspace...');
+      localStorage.setItem('tp_virtual_user', JSON.stringify(virtualUser));
       setTimeout(() => {
-        onSuccess();
+        onSuccess(virtualUser);
       }, 1000);
     } catch (err: any) {
       console.error(err);
-      let errMsg = 'Google authentication failed.';
-      if (err.code === 'auth/popup-blocked') {
-        errMsg = 'The sign-in popup was blocked by your browser. Please allow popups or try opening the app in a new tab.';
-      } else if (err.code === 'auth/closed-by-user') {
-        errMsg = 'The sign-in popup was closed before completing the authentication.';
+      if (err.code === 'auth/user-not-found') {
+        setError('Account not found. Please verify the email or click the "Register" tab to create your account first.');
+      } else if (err.code === 'auth/wrong-password') {
+        setError('Incorrect password. Please verify your password and try again.');
       } else {
-        errMsg = err.message || errMsg;
+        setError(err.message || 'Authentication failed. Please verify your credentials.');
       }
-      setError(errMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Secure Register Handler
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    if (!registerEmail || !registerPassword) {
+      setError('Please fill in all registration fields.');
+      return;
+    }
+
+    if (registerPassword.length < 6) {
+      setError('Password must be at least 6 characters long for security.');
+      return;
+    }
+
+    if (registerPassword !== confirmPassword) {
+      setError('Passwords do not match. Please verify and try again.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const newUser = await registerVirtualUser(registerEmail, registerPassword);
+      setSuccess('Account successfully registered! Logging you in...');
+      
+      // Auto-sign in the user after successful registration
+      localStorage.setItem('tp_virtual_user', JSON.stringify(newUser));
+      setTimeout(() => {
+        onSuccess(newUser);
+      }, 1000);
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'auth/email-already-in-use' || (err.message && err.message.includes('already registered'))) {
+        setError('This email is already registered. Please go to the "Sign In" tab to log in.');
+      } else {
+        setError(err.message || 'Registration failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -64,7 +117,7 @@ export function AuthScreen({ onSuccess, onContinueAsGuest }: AuthScreenProps) {
       <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] rounded-full bg-emerald-500/5 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full bg-indigo-500/5 blur-[120px] pointer-events-none" />
 
-      {/* Floating Sparkles decorative element */}
+      {/* Decorative sparkles */}
       <div className="absolute top-10 left-10 text-emerald-500/20 pointer-events-none animate-pulse">
         <Sparkles className="w-8 h-8" />
       </div>
@@ -73,29 +126,47 @@ export function AuthScreen({ onSuccess, onContinueAsGuest }: AuthScreenProps) {
       </div>
 
       {/* Main card */}
-      <div className="w-full max-w-md bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-3xl p-8 shadow-2xl relative z-10 transition-all duration-300">
+      <div className="w-full max-w-md bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-3xl p-8 shadow-2xl relative z-10 animate-fadeIn">
         
         {/* App Branding */}
-        <div className="flex flex-col items-center text-center mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-400 to-indigo-500 flex items-center justify-center border border-white/10 shadow-lg shadow-emerald-500/10 mb-4">
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-400 to-indigo-500 flex items-center justify-center border border-white/10 shadow-lg shadow-emerald-500/10 mb-4 animate-pulse">
             <span className="text-xl">⚡</span>
           </div>
           <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
             TaskPulse AI
           </h1>
           <p className="text-slate-400 text-xs mt-1.5 font-medium max-w-xs">
-            Your intelligent personal productivity engine and schedule optimizer.
+            Your secure personal task planner and schedule optimizer.
           </p>
         </div>
 
-        {/* Info Box */}
-        <div className="mb-6 p-4 rounded-2xl bg-slate-950/40 border border-slate-850 text-slate-300 text-xs space-y-2">
-          <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase tracking-wider text-[10px]">
-            <ShieldCheck className="w-4 h-4" /> Secure Cloud Vault
-          </div>
-          <p className="leading-relaxed text-slate-400">
-            Sign in to instantly backup, sync, and access your daily schedule, AI chats, and breakdown tasks across all your devices.
-          </p>
+        {/* Tab Selection */}
+        <div className="flex bg-slate-950/80 p-1 rounded-2xl border border-slate-850/60 mb-6 shadow-inner">
+          <button
+            type="button"
+            onClick={() => { setActiveTab('signin'); setError(null); setSuccess(null); }}
+            className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer min-h-[40px] flex items-center justify-center gap-1.5 ${
+              activeTab === 'signin'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md shadow-emerald-500/15'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('register'); setError(null); setSuccess(null); }}
+            className={`flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer min-h-[40px] flex items-center justify-center gap-1.5 ${
+              activeTab === 'register'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md shadow-emerald-500/15'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            Register
+          </button>
         </div>
 
         {/* Messages */}
@@ -113,47 +184,136 @@ export function AuthScreen({ onSuccess, onContinueAsGuest }: AuthScreenProps) {
           </div>
         )}
 
-        {/* Google Sign In */}
-        <button
-          type="button"
-          disabled={loading}
-          onClick={handleGoogleSignIn}
-          className="w-full mb-3 bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs uppercase tracking-wider py-4 px-4 rounded-2xl shadow-md transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2.5 active:scale-98"
-        >
-          {loading ? (
-            <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <>
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
-              </svg>
-              Sign In with Google
-            </>
-          )}
-        </button>
+        {/* SIGN IN FORM */}
+        {activeTab === 'signin' && (
+          <form onSubmit={handleSignIn} className="space-y-4 mb-6 animate-fadeIn">
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 pl-1">Gmail / Google Email</label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. yourname@gmail.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-slate-950/60 border border-slate-850/80 text-slate-100 pl-10 pr-4 py-3 rounded-xl text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder:text-slate-600 font-sans"
+                />
+              </div>
+            </div>
 
-        <div className="relative flex py-4 items-center">
-          <div className="flex-grow border-t border-slate-850/60"></div>
-          <span className="flex-shrink mx-4 text-slate-600 text-[10px] font-bold uppercase tracking-widest">or</span>
-          <div className="flex-grow border-t border-slate-850/60"></div>
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 pl-1">Password</label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-950/60 border border-slate-850/80 text-slate-100 pl-10 pr-4 py-3 rounded-xl text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder:text-slate-600 font-sans"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 hover:from-emerald-400 hover:to-teal-400 font-black text-xs uppercase tracking-wider py-3.5 px-4 rounded-xl shadow-md transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2.5 active:scale-98 min-h-[44px]"
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+              ) : (
+                <>
+                  <span>Sign In to Account</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+        )}
+
+        {/* REGISTER FORM */}
+        {activeTab === 'register' && (
+          <form onSubmit={handleRegister} className="space-y-4 mb-6 animate-fadeIn">
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 pl-1">Choose Gmail / Google Email</label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. yourname@gmail.com"
+                  value={registerEmail}
+                  onChange={(e) => setRegisterEmail(e.target.value)}
+                  className="w-full bg-slate-950/60 border border-slate-850/80 text-slate-100 pl-10 pr-4 py-3 rounded-xl text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder:text-slate-600 font-sans"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 pl-1">Choose Password</label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                <input
+                  type="password"
+                  required
+                  placeholder="At least 6 characters"
+                  value={registerPassword}
+                  onChange={(e) => setRegisterPassword(e.target.value)}
+                  className="w-full bg-slate-950/60 border border-slate-850/80 text-slate-100 pl-10 pr-4 py-3 rounded-xl text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder:text-slate-600 font-sans"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 pl-1">Confirm Password</label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                <input
+                  type="password"
+                  required
+                  placeholder="Repeat selected password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full bg-slate-950/60 border border-slate-850/80 text-slate-100 pl-10 pr-4 py-3 rounded-xl text-xs outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder:text-slate-600 font-sans"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 hover:from-emerald-400 hover:to-teal-400 font-black text-xs uppercase tracking-wider py-3.5 px-4 rounded-xl shadow-md transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2.5 active:scale-98 min-h-[44px]"
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+              ) : (
+                <>
+                  <span>Create Account</span>
+                  <UserPlus className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+        )}
+
+        {/* Guest Fallback Options */}
+        <div className="border-t border-slate-850/60 pt-5">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onContinueAsGuest}
+            className="w-full bg-slate-950/40 hover:bg-slate-850/60 text-slate-300 hover:text-white border border-slate-850 text-xs font-bold py-3.5 px-4 rounded-2xl transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2 min-h-[44px]"
+          >
+            <User className="w-4 h-4 text-slate-400" />
+            Continue as Guest (Offline Mode)
+          </button>
         </div>
 
-        {/* Guest Continue */}
-        <button
-          type="button"
-          disabled={loading}
-          onClick={onContinueAsGuest}
-          className="w-full bg-slate-950/40 hover:bg-slate-850/60 text-slate-300 hover:text-white border border-slate-850 text-xs font-bold py-3.5 px-4 rounded-2xl transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
-        >
-          <User className="w-4 h-4 text-slate-400" />
-          Continue as Guest (Offline)
-        </button>
-
         <p className="text-[10px] text-slate-500 text-center mt-5 leading-relaxed">
-          🔒 Secure authentication. Your database connections are managed fully securely.
+          🔒 Secure local authentication. Your personal password details are verified 100% on the server and are never shared.
         </p>
       </div>
     </div>

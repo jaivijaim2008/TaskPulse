@@ -35,9 +35,37 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+let app: any;
+let auth: any;
+let db: any;
+
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+} catch (error) {
+  console.error("Firebase initialization failed due to invalid API key or configuration restriction:", error);
+  
+  // Safe mock fallbacks to prevent the rest of the client app from crashing
+  auth = {
+    currentUser: null,
+    onAuthStateChanged: (callback: any, errorCallback?: any) => {
+      // Safely callback with null so application defaults to Virtual/Offline login state
+      setTimeout(() => callback(null), 10);
+      return () => {};
+    },
+    signOut: async () => {
+      localStorage.removeItem('tp_virtual_user');
+      localStorage.removeItem('tp_guest_mode');
+    }
+  };
+  
+  db = {
+    // Empty Firestore proxy
+  };
+}
+
+export { auth, db };
 
 // In-memory access token cache
 let cachedAccessToken: string | null = null;
@@ -73,6 +101,58 @@ export const connectGoogleCalendar = async (): Promise<string | null> => {
     console.error("Failed to authorize Google Calendar:", error);
   }
   return null;
+};
+
+export const registerVirtualUser = async (email: string, password: string): Promise<any> => {
+  const response = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw { code: data.code || 'auth/error', message: data.message || data.error || 'Registration failed.' };
+  }
+  return data;
+};
+
+export const loginVirtualUser = async (email: string, password: string): Promise<any> => {
+  const response = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw { code: data.code || 'auth/error', message: data.message || data.error || 'Login failed.' };
+  }
+  return data;
+};
+
+export const sendVerificationCode = async (email: string): Promise<any> => {
+  const response = await fetch('/api/auth/send-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw { code: data.code || 'auth/error', message: data.message || data.error || 'Failed to send verification code.' };
+  }
+  return data;
+};
+
+export const verifyAndRegisterUser = async (email: string, code: string, password: string): Promise<any> => {
+  const response = await fetch('/api/auth/verify-and-register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code, password })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw { code: data.code || 'auth/error', message: data.message || data.error || 'Verification failed.' };
+  }
+  return data;
 };
 
 export {
